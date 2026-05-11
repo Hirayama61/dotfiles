@@ -1,0 +1,21 @@
+[user]
+    name = {{ .git_name }}
+    email = {{ .email }}
+
+[core]
+    hooksPath = {{ .chezmoi.homeDir }}/.config/git/hooks
+
+[init]
+    defaultBranch = main
+
+[push]
+    autoSetupRemote = true
+
+# gh CLI を credential helper として使用
+[credential "https://github.com"]
+    helper =
+    helper = !gh auth git-credential
+
+[credential "https://gist.github.com"]
+    helper =
+    helper = !gh auth git-credential

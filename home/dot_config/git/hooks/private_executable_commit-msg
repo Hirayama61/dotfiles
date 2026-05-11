@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Conventional Commits validation hook
+#
+# 1行目が以下の形式であることを検証する:
+#   <type>(<optional-scope>)?(!)?: <description>
+#
+# 許可される type: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert
+
+set -eu
+
+msg_file=$1
+first_line=$(head -1 "$msg_file")
+
+# 自動生成系(merge / revert / rebase fixup 等)はスキップ
+if [[ "$first_line" =~ ^(Merge|Revert|fixup!|squash!|amend!) ]]; then
+  exit 0
+fi
+
+# 空行・コメントのみはスキップ(git 側で別途弾かれる)
+if [[ -z "$first_line" || "$first_line" =~ ^# ]]; then
+  exit 0
+fi
+
+# Conventional Commits パターン
+pattern='^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\([^)]+\))?!?: .+'
+
+if [[ ! "$first_line" =~ $pattern ]]; then
+  cat <<EOF >&2
+ERROR: コミットメッセージが Conventional Commits 形式に従っていません。
+
+期待する形式: <type>(<optional-scope>)?: <description>
+
+  例:
+    feat: 新機能を追加
+    fix(api): リクエストエラーを修正
+    refactor!: 破壊的変更
+    docs: README を更新
+
+許可される type: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert
+
+実際のメッセージ:
+  $first_line
+EOF
+  exit 1
+fi
