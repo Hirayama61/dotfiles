@@ -1,0 +1,62 @@
+// Zed settings
+//
+// Reference: https://zed.dev/docs/configuring-zed
+// Default 設定一覧は cmd-shift-p → "zed: open default settings"
+{
+  // ----- 起動 / セッション -----
+  "cli_default_open_behavior": "new_window",
+  "session": {
+    "trust_all_worktrees": true
+  },
+
+  // ----- テレメトリ -----
+  "telemetry": {
+    "diagnostics": false,
+    "metrics": false
+  },
+
+  // ----- 外観 -----
+  "icon_theme": "Zed (Default)",
+  "ui_font_size": 16,
+  "buffer_font_size": 15,
+  "theme": {
+    "mode": "dark",
+    "light": "One Light",
+    "dark": "One Dark",
+  },
+
+  // ----- エディタ -----
+  "vim_mode": true,
+  "cursor_blink": false,
+  "inlay_hints": {
+    "enabled": true
+  },
+
+  // ----- Git -----
+  "git": {
+    "inline_blame": {
+      "enabled": true
+    }
+  },
+
+  // ----- ターミナル(Zed 内蔵) -----
+  "terminal": {
+    "shell": {
+      "program": "zsh"
+    },
+    "working_directory": "current_project_directory",
+    "copy_on_select": true
+  },
+
+  // ----- プロジェクトパネル -----
+  "project_panel": {
+    "dock": "left"
+  },
+
+  // ----- AI Agent -----
+  "agent_servers": {
+    "claude-acp": {
+      "type": "registry"
+    }
+  }
+}
