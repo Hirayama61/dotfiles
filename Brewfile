@@ -15,3 +15,4 @@ brew "tig"            # git TUI
 # GUI Apps
 cask "ghostty"        # ターミナルエミュレータ
 cask "zed"            # エディタ
+cask "raycast"        # ランチャー / Spotlight 代替
