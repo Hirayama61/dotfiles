@@ -1,0 +1,33 @@
+# Starship prompt configuration
+# Reference: https://starship.rs/config/
+#
+# 方針:
+# - 言語バージョン系は一切表示しない(format に含めない)
+# - ディレクトリは basename のみ(tmux pane border で full path 表示しているため)
+# - Nerd Font 非依存(アイコン使わずテキストで完結)
+
+format = """
+$directory\
+$git_branch\
+$git_status\
+$cmd_duration\
+$line_break\
+$character"""
+
+[directory]
+truncation_length = 1
+truncation_symbol = ""
+
+[git_branch]
+format = "[$branch]($style) "
+
+[git_status]
+format = '([\[$all_status$ahead_behind\]]($style) )'
+
+[cmd_duration]
+min_time = 2000
+format = "[$duration]($style) "
+
+[character]
+success_symbol = "[❯](green)"
+error_symbol = "[❯](red)"

@@ -1,0 +1,15 @@
+# ghq リポジトリを fzf で選択して cd する ZLE widget
+# bindkey: Ctrl+G Ctrl+G
+
+local repo
+repo=$(ghq list | fzf --height 40% --layout=reverse --border \
+  --preview 'bat --color=always --style=header,grid --line-range :80 $(ghq root)/{}/README.md 2>/dev/null \
+             || eza --icons --tree --level=2 $(ghq root)/{} 2>/dev/null \
+             || ls -la $(ghq root)/{}')
+
+if [[ -n "$repo" ]]; then
+  BUFFER="cd $(ghq root)/$repo"
+  zle accept-line
+else
+  zle reset-prompt
+fi

@@ -1,0 +1,35 @@
+# User-local binaries (mise installer, pip install --user, etc.)
+export PATH="$HOME/.local/bin:$PATH"
+
+# Homebrew (Apple Silicon)
+eval "$(/opt/homebrew/bin/brew shellenv)"
+
+# mise (runtime version manager + task runner)
+eval "$(mise activate zsh)"
+
+# Default editor
+export EDITOR=nvim
+export VISUAL=nvim
+alias vim=nvim
+alias vi=nvim
+
+# fzf key bindings (Ctrl+R history, Ctrl+T files, Alt+C cd)
+eval "$(fzf --zsh)"
+
+# starship prompt
+eval "$(starship init zsh)"
+
+# ghq_fzf_repo: Ctrl+G Ctrl+G で ghq 配下リポを fzf 選択して cd
+fpath=("$HOME/.config/zsh/functions" $fpath)
+autoload -Uz ghq_fzf_repo
+zle -N ghq_fzf_repo
+bindkey '^g^g' ghq_fzf_repo
+
+# tmux 自動起動(対話シェル + tmux 外 + エディタ terminal 以外)
+if [[ -z "$TMUX" ]] \
+   && [[ -o interactive ]] \
+   && [[ "$TERM_PROGRAM" != "vscode" ]] \
+   && [[ "$TERM_PROGRAM" != "zed" ]] \
+   && command -v tmux >/dev/null 2>&1; then
+  exec tmux new-session -A -s default
+fi

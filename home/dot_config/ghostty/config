@@ -1,0 +1,22 @@
+# Ghostty configuration
+# Reference: https://ghostty.org/docs/config
+#
+# 方針: tmux 中心の運用なのでターミナル単体機能は最小限。
+# テーマ / フォント / タブ関連はデフォルトのまま使う。
+
+# ウィンドウ
+window-padding-x = 12
+window-padding-y = 8
+window-padding-balance = true
+macos-titlebar-style = hidden
+
+# マウス
+copy-on-select = clipboard
+mouse-hide-while-typing = true
+
+# クリップボード
+clipboard-write = allow
+clipboard-trim-trailing-spaces = true
+
+# シェル統合
+shell-integration = zsh
