@@ -1,0 +1,15 @@
+# mise グローバル設定
+#
+# ここの [tools] はどの cwd でも有効。
+# プロジェクト固有のツール / タスクは各プロジェクトの mise.toml に書く。
+
+[tools]
+chezmoi = "latest"
+gh = "latest"
+fzf = "latest"
+tmux = "latest"
+neovim = "latest"
+starship = "latest"
+ghq = "latest"
+node = "lts"
+"npm:@antfu/ni" = "latest"

@@ -1,0 +1,12 @@
+# cc-dotfiles 用 chezmoi 設定の雛形
+#
+# bootstrap 時に ~/.config/chezmoi/cc-dotfiles.toml としてコピーされます。
+# cc-dotfiles リポを clone 後に `mise run apply:cc-dotfiles` を呼ぶと、この config が使われます。
+
+sourceDir = "~/ghq/github.com/Hirayama61/cc-dotfiles"
+
+[chezmoi]
+persistentStateAbsPath = "~/.local/share/chezmoi/cc-dotfiles-state.boltdb"
+
+[data]
+# cc-dotfiles 側で必要なテンプレート変数があればここに

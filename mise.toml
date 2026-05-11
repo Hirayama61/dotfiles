@@ -1,0 +1,99 @@
+# dotfiles オーケストレーター
+#
+# 全タスクの入口。dotfiles リポと cc-dotfiles リポの2つを扱う。
+
+[env]
+CC_DOTFILES_DIR = "{{ env.HOME }}/ghq/github.com/Hirayama61/cc-dotfiles"
+CHEZMOI_DOTFILES = "{{ env.HOME }}/.config/chezmoi/dotfiles.toml"
+CHEZMOI_CC_DOTFILES = "{{ env.HOME }}/.config/chezmoi/cc-dotfiles.toml"
+
+# 大半のツール定義はグローバル設定 ~/.config/mise/config.toml に集約。
+# chezmoi は bin/sync.sh で使うためここに残す
+# (新マシンの bootstrap 時、まだ global config が deploy されていない段階で必要)。
+[tools]
+chezmoi = "latest"
+
+# ─── 日次運用 ─────────────────────────────────────────
+
+[tasks.apply]
+description = "両リポを適用(削除自動化込み)"
+depends = ["apply:dotfiles", "apply:cc-dotfiles"]
+
+[tasks."apply:dotfiles"]
+description = "dotfiles リポだけ適用"
+run = "bin/sync.sh \"$CHEZMOI_DOTFILES\" dotfiles"
+
+[tasks."apply:cc-dotfiles"]
+description = "cc-dotfiles リポだけ適用(リポ未 clone なら skip)"
+run = """
+if [[ -d "$CC_DOTFILES_DIR" ]]; then
+  bin/sync.sh "$CHEZMOI_CC_DOTFILES" cc-dotfiles
+else
+  echo "Skipping: cc-dotfiles repo not at $CC_DOTFILES_DIR"
+fi
+"""
+
+[tasks.diff]
+description = "両リポの pending diff を表示"
+run = """
+echo "=== dotfiles ==="
+chezmoi --config "$CHEZMOI_DOTFILES" diff || true
+if [[ -d "$CC_DOTFILES_DIR" ]]; then
+  echo
+  echo "=== cc-dotfiles ==="
+  chezmoi --config "$CHEZMOI_CC_DOTFILES" diff || true
+fi
+"""
+
+[tasks.update]
+description = "両リポを git pull → apply"
+run = """
+git -C "$MISE_PROJECT_ROOT" pull --ff-only
+if [[ -d "$CC_DOTFILES_DIR" ]]; then
+  git -C "$CC_DOTFILES_DIR" pull --ff-only
+fi
+mise run apply
+"""
+
+# ─── セットアップ ─────────────────────────────────────
+
+[tasks.bootstrap]
+description = "新マシン初回セットアップ"
+run = """
+set -euo pipefail
+
+echo "==> brew bundle"
+brew bundle --file=./Brewfile
+
+echo "==> chezmoi config 雛形を ~/.config/chezmoi/ に配置"
+mkdir -p "$HOME/.config/chezmoi"
+[[ -f "$CHEZMOI_DOTFILES" ]] || cp template/dotfiles.toml "$CHEZMOI_DOTFILES"
+[[ -f "$CHEZMOI_CC_DOTFILES" ]] || cp template/cc-dotfiles.toml "$CHEZMOI_CC_DOTFILES"
+
+echo "==> chezmoi apply(~/.config/mise/config.toml を含む dotfiles を配置)"
+mise run apply
+
+echo "==> mise install(global config のツールを取得)"
+mise install
+
+echo
+echo "==> 配置完了。次の手順:"
+echo "  1. $CHEZMOI_DOTFILES を編集して [data] にマシン固有値を設定"
+echo "  2. 新しいシェルを開く(tmux 自動起動が走る)"
+"""
+
+# ─── メンテナンス ─────────────────────────────────────
+
+[tasks."brew-update"]
+description = "現在の brew/cask 状態から Brewfile を再生成"
+run = "brew bundle dump --force --file=./Brewfile"
+
+[tasks.clean]
+description = "削除自動化用 snapshot キャッシュをクリア"
+run = "rm -rf \"${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles\""
+
+# ─── macOS システム設定 ───────────────────────────────
+
+[tasks.macos]
+description = "macOS の defaults / nvram を一括設定 (sudo 必要、新マシン1回想定)"
+run = "bin/macos-defaults.sh"
