@@ -1,0 +1,7 @@
+# Claude Code のローカル/再生成可能成果物(追跡しない)
+# settings.local.json: マシン固有の追加許可。共有しない
+# tmp/: delegate の作業成果物(再生成可能)
+# worktrees/: agent worktree(再生成可能)
+settings.local.json
+tmp/
+worktrees/
