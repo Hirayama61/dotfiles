@@ -15,7 +15,7 @@ brew install mise
 mkdir -p ~/ghq/github.com/Hirayama61
 cd ~/ghq/github.com/Hirayama61
 git clone git@github.com:Hirayama61/dotfiles.git
-# git clone git@github.com:Hirayama61/cc-dotfiles.git  # 別途作成後
+git clone git@github.com:Hirayama61/cc-dotfiles.git
 
 # 4. ブートストラップ(brew bundle + chezmoi config 配置)
 cd dotfiles
