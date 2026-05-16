@@ -2,7 +2,10 @@
 # Reference: https://ghostty.org/docs/config
 #
 # 方針: tmux 中心の運用なのでターミナル単体機能は最小限。
-# テーマ / フォント / タブ関連はデフォルトのまま使う。
+# フォント / タブ関連はデフォルトのまま使う。
+
+# テーマ (themes/ 配下のカスタムテーマを参照)
+theme = panda
 
 # ウィンドウ
 window-padding-x = 12

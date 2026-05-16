@@ -1,0 +1,27 @@
+# Panda Syntax — tinkertrain/panda-syntax 公式パレット由来
+# VSCode の Panda Theme と配色を揃えるためのターミナルテーマ。
+# 出典: https://github.com/tinkertrain/panda-syntax-vscode (themes/colors.yaml)
+
+palette = 0=#292a2b
+palette = 1=#ff2c6d
+palette = 2=#19f9d8
+palette = 3=#ffb86c
+palette = 4=#45a9f9
+palette = 5=#ff75b5
+palette = 6=#6fc1ff
+palette = 7=#e6e6e6
+palette = 8=#676b79
+palette = 9=#ff4b82
+palette = 10=#6fe7d2
+palette = 11=#ffcc95
+palette = 12=#6fc1ff
+palette = 13=#ff9ac1
+palette = 14=#19f9d8
+palette = 15=#ffffff
+
+background = #242526
+foreground = #e6e6e6
+cursor-color = #e6e6e6
+cursor-text = #242526
+selection-background = #3e4250
+selection-foreground = #e6e6e6
