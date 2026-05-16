@@ -4,7 +4,19 @@
 # 方針:
 # - 言語バージョン系は一切表示しない(format に含めない)
 # - ディレクトリは basename のみ(tmux pane border で full path 表示しているため)
-# - Nerd Font 非依存(アイコン使わずテキストで完結)
+# - 構造はテキスト完結のまま。配色のみ Panda palette に統一
+
+palette = "panda"
+
+[palettes.panda]
+# 暗背景(#242526)で沈む色は Panda のライト系変種へ寄せて底上げ
+pink = "#ff75b5"
+mint = "#19f9d8"
+blue = "#95d0ff"
+orange = "#ffb86c"
+purple = "#cdbfff"
+gray = "#a4a8b8"
+red = "#ff4b82"
 
 format = """
 $directory\
@@ -17,17 +29,21 @@ $character"""
 [directory]
 truncation_length = 1
 truncation_symbol = ""
+style = "blue"
 
 [git_branch]
 format = "[$branch]($style) "
+style = "purple"
 
 [git_status]
 format = '([\[$all_status$ahead_behind\]]($style) )'
+style = "orange"
 
 [cmd_duration]
 min_time = 2000
 format = "[$duration]($style) "
+style = "gray"
 
 [character]
-success_symbol = "[❯](green)"
+success_symbol = "[❯](mint)"
 error_symbol = "[❯](red)"

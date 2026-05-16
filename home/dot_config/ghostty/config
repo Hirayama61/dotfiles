@@ -2,10 +2,16 @@
 # Reference: https://ghostty.org/docs/config
 #
 # 方針: tmux 中心の運用なのでターミナル単体機能は最小限。
-# フォント / タブ関連はデフォルトのまま使う。
+# タブ関連はデフォルトのまま使う。
 
 # テーマ (themes/ 配下のカスタムテーマを参照)
 theme = panda
+
+# フォント (Brewfile の font-jetbrains-mono-nerd-font。Nerd Font アイコン込み)
+# 反映されない場合は `ghostty +list-fonts | grep -i jetbrains` でファミリ名を確認する。
+# Mono = アイコンも等幅でターミナル向き。
+font-family = JetBrainsMono Nerd Font Mono
+font-size = 14
 
 # ウィンドウ
 window-padding-x = 12

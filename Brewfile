@@ -16,3 +16,6 @@ brew "tig"            # git TUI
 cask "ghostty"        # ターミナルエミュレータ
 cask "zed"            # エディタ
 cask "raycast"        # ランチャー / Spotlight 代替
+
+# Fonts
+cask "font-jetbrains-mono-nerd-font"  # Ghostty フォント(可読性重視・Nerd Font アイコン込み)

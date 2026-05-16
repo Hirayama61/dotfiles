@@ -13,6 +13,15 @@ export VISUAL=nvim
 alias vim=nvim
 alias vi=nvim
 
+# eza (ls 代替) — Panda 配色 + Nerd Font アイコン
+alias ls='eza --group-directories-first --icons=auto'
+alias ll='eza -l  --group-directories-first --icons=auto --git --no-user'
+alias la='eza -la --group-directories-first --icons=auto --git'
+alias lt='eza --tree --level=2 --group-directories-first --icons=auto'
+# di=dir(青) ex=実行(ミント) ln=リンク(ピンク) da=日時(灰)
+# uu=自分(紫) sn/sb=サイズ(ミント) gm/ga/gd=git 変更/追加/削除(橙/ミント/赤)
+export EZA_COLORS="di=38;2;133;203;255:ex=38;2;25;249;216:ln=38;2;255;117;181:da=38;2;154;158;176:uu=38;2;198;183;255:sn=38;2;25;249;216:sb=38;2;25;249;216:gm=38;2;255;184;108:ga=38;2;25;249;216:gd=38;2;255;75;130"
+
 # fzf key bindings (Ctrl+R history, Ctrl+T files, Alt+C cd)
 eval "$(fzf --zsh)"
 
