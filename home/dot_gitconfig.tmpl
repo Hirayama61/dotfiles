@@ -19,3 +19,26 @@
 [credential "https://gist.github.com"]
     helper =
     helper = !gh auth git-credential
+
+# 配色は共有 Panda パレット(home/.chezmoidata.yaml)由来。git 2.26+ は hex 受理。
+[color]
+    ui = auto
+
+[color "diff"]
+    meta = "{{ .panda.subtle.hex }}"
+    frag = "{{ .panda.cyan.hex }}"
+    old = "{{ .panda.red.hex }}"
+    new = "{{ .panda.mint.hex }}"
+    commit = "{{ .panda.orange.hex }}"
+    whitespace = "reverse {{ .panda.red.hex }}"
+
+[color "status"]
+    added = "{{ .panda.mint.hex }}"
+    changed = "{{ .panda.orange.hex }}"
+    untracked = "{{ .panda.subtle.hex }}"
+    deleted = "{{ .panda.red.hex }}"
+
+[color "branch"]
+    current = "{{ .panda.mint.hex }}"
+    local = "{{ .panda.fg.hex }}"
+    remote = "{{ .panda.purple_lift.hex }}"

@@ -98,12 +98,12 @@ set -g automatic-rename-format '#{b:pane_current_path}'
 # ============================
 
 set -g pane-border-status top
-set -g pane-border-format " #{?pane_active,#[fg=colour31 bold]●,#[fg=colour245]○} #{pane_index}:#{pane_current_command} #{s|$HOME|~|:pane_current_path} "
-set -g pane-border-style fg=colour238
-set -g pane-active-border-style fg=colour31
+set -g pane-border-format " #{?pane_active,#[fg={{ .panda.cyan.hex }} bold]●,#[fg={{ .panda.subtle.hex }}]○} #{pane_index}:#{pane_current_command} #{s|$HOME|~|:pane_current_path} "
+set -g pane-border-style fg={{ .panda.selection.hex }}
+set -g pane-active-border-style fg={{ .panda.cyan.hex }}
 
 # 非アクティブペインの文字色を薄く
-set -g window-style "fg=colour245"
+set -g window-style "fg={{ .panda.subtle.hex }}"
 set -g window-active-style "fg=terminal"
 
 # ============================
@@ -112,20 +112,20 @@ set -g window-active-style "fg=terminal"
 
 set -g status-position top
 set -g status-interval 10
-set -g status-bg colour235
-set -g status-fg colour255
+set -g status-bg {{ .panda.bg.hex }}
+set -g status-fg {{ .panda.fg.hex }}
 
 # 左側: セッション名
 set -g status-left-length 40
-set -g status-left "#[fg=colour255,bg=colour241,bold] #S #[fg=colour241,bg=colour235]"
+set -g status-left "#[fg={{ .panda.fg.hex }},bg={{ .panda.subtle.hex }},bold] #S #[fg={{ .panda.subtle.hex }},bg={{ .panda.bg.hex }}]"
 
 # 右側: 日時
 set -g status-right-length 150
-set -g status-right "#[fg=colour241,bg=colour235]#[fg=colour255,bg=colour241] %Y-%m-%d %H:%M:%S "
+set -g status-right "#[fg={{ .panda.subtle.hex }},bg={{ .panda.bg.hex }}]#[fg={{ .panda.fg.hex }},bg={{ .panda.subtle.hex }}] %Y-%m-%d %H:%M:%S "
 
 # ウィンドウリスト
-setw -g window-status-format "#[fg=colour244,bg=colour235] #I:#W "
-setw -g window-status-current-format "#[fg=colour235,bg=colour31]#[fg=colour255,bg=colour31,bold] #I:#W #[fg=colour31,bg=colour235]"
+setw -g window-status-format "#[fg={{ .panda.subtle.hex }},bg={{ .panda.bg.hex }}] #I:#W "
+setw -g window-status-current-format "#[fg={{ .panda.bg.hex }},bg={{ .panda.cyan.hex }}]#[fg={{ .panda.bg.hex }},bg={{ .panda.cyan.hex }},bold] #I:#W #[fg={{ .panda.cyan.hex }},bg={{ .panda.bg.hex }}]"
 
 # ============================
 # popup でツール呼び出し

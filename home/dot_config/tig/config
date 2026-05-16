@@ -1,0 +1,50 @@
+# tig 配色 — Panda(静的・ANSI16色名)
+#
+# tig は truecolor hex を標準で受け付けないため、Panda 公式 16色を
+# 端末(ghostty)の ANSI palette 経由で参照する。ghostty palette 0-15 が
+# 既に Panda 化済みなので、ここでは ANSI 名(cyan/magenta/green/red/
+# yellow/blue/white/black/default)で役割をマップする。
+# .tmpl 化しない(hex 不可・色名は固定のため共有パレット参照不要)。
+#
+# 末尾コメント = home/.chezmoidata.yaml 上の対応パレット役割。
+
+# --- カーソル / 選択行 ---
+color cursor            black   cyan            # fg=panda.bg-ish / bg=panda.cyan(選択強調)
+color title-focus       black   cyan    bold    # アクティブ view タイトル: panda.cyan
+color title-blur        white   default         # 非アクティブ view タイトル: panda.fg
+color status            green   default         # ステータス行: panda.mint
+color section           cyan    default bold    # セクション見出し: panda.cyan
+
+# --- diff ---
+color diff-header       yellow  default         # diff ヘッダ: panda.orange
+color diff-chunk        cyan    default         # @@ チャンク: panda.cyan
+color diff-add          green   default         # 追加行: panda.mint
+color diff-del          red     default         # 削除行: panda.red
+color diff-index        magenta default         # index 行: panda.pink
+color diff-oldmode      red     default         # 旧モード: panda.red
+color diff-newmode      green   default         # 新モード: panda.mint
+color "Author: "        magenta default         # 著者: panda.pink
+color "Commit: "        magenta default         # コミッタ: panda.pink
+color "---"             yellow  default         # diff --- : panda.orange
+color "+++"             yellow  default         # diff +++ : panda.orange
+
+# --- main / log view ---
+color graph-commit      cyan    default         # コミットグラフ: panda.cyan
+color date              blue    default         # 日時: panda.blue
+color author            magenta default         # 著者列: panda.pink
+color id                yellow  default         # コミット ID: panda.orange
+color main-commit       white   default         # コミット件名: panda.fg
+color main-tag          red     default bold    # tag: panda.red
+color main-local-tag    red     default         # local tag: panda.red
+color main-remote       magenta default         # remote ref: panda.pink
+color main-tracked      magenta default bold    # 追跡ブランチ: panda.pink
+color main-ref          green   default         # ローカル ref: panda.mint
+color main-head         green   default bold    # HEAD: panda.mint
+
+# --- 汎用 UI ---
+color line-number       default default         # 行番号: 端末既定(panda.subtle 相当)
+color delimiter         yellow  default         # 省略記号: panda.orange
+color mode              green   default         # ファイルモード: panda.mint
+color overflow          red     default         # 桁あふれ: panda.red
+color help-group        cyan    default bold    # ヘルプ群見出し: panda.cyan
+color help-action       green   default         # ヘルプアクション: panda.mint

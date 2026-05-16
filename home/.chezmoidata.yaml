@@ -1,0 +1,33 @@
+# Panda 配色の単一ソース(canonical palette)
+#
+# chezmoiroot=home なのでソースルート直下。git 管理・マシン非依存。
+# .tmpl から {{ .panda.<role>.hex }} / {{ .panda.<role>.rgb }} で参照する。
+#
+# 単位差の吸収方針:
+#   - hex ネイティブなツール(tmux/fzf/git/Starship)= hex をそのまま展開
+#   - eza は decimal RGB が必要 = rgb を併記し同一ソースから供給
+#   - tig は hex 不可(ANSI16色名のみ)= テンプレート対象外の静的ファイル
+#     (home/dot_config/tig/config)にし、対応役割をコメントで紐づける
+#
+# 正準: ghostty 公式 16色(.claude/tmp/panda-audit.md §1-a)。
+# *_lift = 暗背景(#242526)で沈む色を Starship/eza が底上げに使う意図的変種。
+# hex と rgb は隣接コメントで同期(片方だけ編集しないこと)。
+panda:
+  # 構造色
+  bg:        { hex: "#242526" }   # 公式 _background-dark。nvim も同値
+  bg_dim:    { hex: "#292a2b" }   # palette0 黒
+  fg:        { hex: "#e6e6e6" }   # palette7
+  white:     { hex: "#ffffff" }   # palette15
+  selection: { hex: "#3e4250" }
+  subtle:    { hex: "#676b79" }   # br-black。border/非アクティブ文字
+  # アクセント(公式値, eza 用に rgb 併記)
+  pink:   { hex: "#ff75b5", rgb: "255;117;181" }
+  mint:   { hex: "#19f9d8", rgb: "25;249;216"  }
+  orange: { hex: "#ffb86c", rgb: "255;184;108" }
+  red:    { hex: "#ff4b82", rgb: "255;75;130"  }
+  blue:   { hex: "#45a9f9" }
+  cyan:   { hex: "#6fc1ff" }
+  # 暗背景で沈む色の意図的ライト変種(Starship/eza が底上げに使用)
+  blue_lift:   { hex: "#95d0ff", rgb: "149;208;255" }
+  purple_lift: { hex: "#cdbfff", rgb: "205;191;255" }
+  gray_lift:   { hex: "#a4a8b8", rgb: "164;168;184" }

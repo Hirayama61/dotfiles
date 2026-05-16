@@ -1,0 +1,18 @@
+# 端末カラー(eza / fzf)の export — Panda 共有パレット由来
+#
+# dot_zshrc から `source ~/.config/zsh/colors.zsh` で読み込む。
+# 色値は単一ソース home/.chezmoidata.yaml の panda パレットから展開。
+# zshrc 本体は .tmpl 化しない方針のため、色 export のみここに切り出している。
+
+# eza (ls 代替) の配色。truecolor(38;2;R;G;B)。
+# 旧 dot_zshrc L23 と意味的に同内容。blue/purple/gray は意図的ライト変種に収束:
+#   di→blue_lift(旧 #85cbff から #95d0ff へ収束)
+#   uu→purple_lift(旧 #c6b7ff から #cdbfff へ収束)
+#   da→gray_lift(旧 #9a9eb0 から #a4a8b8 へ収束)
+# di=dir(青) ex=実行(ミント) ln=リンク(ピンク) da=日時(灰)
+# uu=自分(紫) sn/sb=サイズ(ミント) gm/ga/gd=git 変更/追加/削除(橙/ミント/赤)
+export EZA_COLORS="di=38;2;{{ .panda.blue_lift.rgb }}:ex=38;2;{{ .panda.mint.rgb }}:ln=38;2;{{ .panda.pink.rgb }}:da=38;2;{{ .panda.gray_lift.rgb }}:uu=38;2;{{ .panda.purple_lift.rgb }}:sn=38;2;{{ .panda.mint.rgb }}:sb=38;2;{{ .panda.mint.rgb }}:gm=38;2;{{ .panda.orange.rgb }}:ga=38;2;{{ .panda.mint.rgb }}:gd=38;2;{{ .panda.red.rgb }}"
+
+# fzf の配色。既存 FZF_DEFAULT_OPTS を壊さないよう += で追記。
+# Panda hex を直接指定(fzf は hex 受理)。
+export FZF_DEFAULT_OPTS+=' --color=fg:{{ .panda.fg.hex }},bg:-1,hl:{{ .panda.cyan.hex }},fg+:{{ .panda.white.hex }},bg+:{{ .panda.selection.hex }},hl+:{{ .panda.cyan.hex }},info:{{ .panda.subtle.hex }},prompt:{{ .panda.mint.hex }},pointer:{{ .panda.pink.hex }},marker:{{ .panda.orange.hex }},spinner:{{ .panda.purple_lift.hex }},header:{{ .panda.subtle.hex }},border:{{ .panda.selection.hex }}'

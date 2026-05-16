@@ -9,14 +9,16 @@
 palette = "panda"
 
 [palettes.panda]
-# 暗背景(#242526)で沈む色は Panda のライト系変種へ寄せて底上げ
-pink = "#ff75b5"
-mint = "#19f9d8"
-blue = "#95d0ff"
-orange = "#ffb86c"
-purple = "#cdbfff"
-gray = "#a4a8b8"
-red = "#ff4b82"
+# 配色は共有パレット(~/.local/share/chezmoi 由来の .chezmoidata.yaml)から展開。
+# 暗背景(#242526)で沈む blue/purple/gray は意図的ライト変種(*_lift)を参照。
+# 値はリネーム前と同一 = 見た目は不変。
+pink = "{{ .panda.pink.hex }}"
+mint = "{{ .panda.mint.hex }}"
+blue = "{{ .panda.blue_lift.hex }}"
+orange = "{{ .panda.orange.hex }}"
+purple = "{{ .panda.purple_lift.hex }}"
+gray = "{{ .panda.gray_lift.hex }}"
+red = "{{ .panda.red.hex }}"
 
 format = """
 $directory\
