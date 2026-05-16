@@ -27,7 +27,9 @@ run = "bin/sync.sh \"$CHEZMOI_DOTFILES\" dotfiles"
 description = "cc-dotfiles リポだけ適用(リポ未 clone なら skip)"
 run = """
 if [[ -d "$CC_DOTFILES_DIR" ]]; then
-  bin/sync.sh "$CHEZMOI_CC_DOTFILES" cc-dotfiles
+  # --force: Claude Code が ~/.claude/settings.json を実行時に再整形するため、
+  #          テンプレートを常に正として管理外変更を確認なしで上書きする。
+  bin/sync.sh "$CHEZMOI_CC_DOTFILES" cc-dotfiles --force
 else
   echo "Skipping: cc-dotfiles repo not at $CC_DOTFILES_DIR"
 fi

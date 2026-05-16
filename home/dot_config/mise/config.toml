@@ -14,3 +14,10 @@ ghq = "latest"
 eza = "latest"          # ls 代替(Panda 配色は zshrc の EZA_COLORS)
 node = "lts"
 "npm:@antfu/ni" = "latest"
+
+# LSP サーバー。Neovim と Claude Code が PATH 経由で同じバイナリを共有する。
+# (Zed は自前で LSP を bundle するため対象外。Mason は使わない方針)
+lua-language-server = "latest"                 # Lua: Neovim 設定
+marksman = "latest"                            # Markdown: ドキュメント類
+"npm:@vtsls/language-server" = "latest"        # TS/JS: bin=vtsls。大規模 legacy 向けに高速
+"npm:vscode-langservers-extracted" = "latest"  # JSON/HTML/CSS/ESLint

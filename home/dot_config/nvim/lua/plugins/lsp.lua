@@ -1,33 +1,26 @@
 -- LSP セットアップ
 --
--- LSP server は :Mason で必要に応じてインストールする。
--- 例: :MasonInstall lua-language-server typescript-language-server
+-- LSP server バイナリは mise (~/.config/mise/config.toml) で一元管理し、
+-- PATH 経由で Neovim と Claude Code が同じバイナリを共有する。
+-- Mason は使わない。サーバー設定は nvim-lspconfig 同梱の定義をそのまま利用。
 
 return {
-  -- LSP server インストーラ
-  {
-    "williamboman/mason.nvim",
-    cmd = "Mason",
-    config = true,
-  },
-
-  -- mason ↔ lspconfig 連携
-  {
-    "williamboman/mason-lspconfig.nvim",
-    dependencies = { "williamboman/mason.nvim", "neovim/nvim-lspconfig" },
-    event = { "BufReadPre", "BufNewFile" },
-    config = function()
-      require("mason-lspconfig").setup({
-        -- ensure_installed = {} 必要なら追加(例: { "lua_ls" })
-      })
-    end,
-  },
-
-  -- LSP クライアント設定
   {
     "neovim/nvim-lspconfig",
     event = { "BufReadPre", "BufNewFile" },
     config = function()
+      -- mise で入れた LSP サーバーを有効化(Neovim 0.11+ ネイティブ API)。
+      -- 各サーバーのバイナリが PATH 上に無ければ単に attach されないだけ。
+      vim.lsp.enable({
+        "vtsls",    -- TypeScript / JavaScript
+        "lua_ls",   -- Lua (Neovim 設定)
+        "marksman", -- Markdown
+        "jsonls",   -- JSON
+        "eslint",   -- ESLint
+        "cssls",    -- CSS
+        "html",     -- HTML
+      })
+
       -- LSP attach 時の keymap
       vim.api.nvim_create_autocmd("LspAttach", {
         callback = function(ev)
