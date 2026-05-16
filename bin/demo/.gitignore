@@ -1,0 +1,7 @@
+# demo.sh が実行時に生成する撮影用ランタイム成果物(再生成可能・追跡しない)
+.pane-*.sh
+.clip.txt
+.claude-transcript.ansi
+.run.ansi
+.sysinfo.ansi
+showcase/

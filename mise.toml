@@ -99,3 +99,13 @@ run = "rm -rf \"${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles\""
 [tasks.macos]
 description = "macOS の defaults / nvram を一括設定 (sudo 必要、新マシン1回想定)"
 run = "bin/macos-defaults.sh"
+
+# ─── 撮影用ショーケース ───────────────────────────────
+
+[tasks.demo]
+description = "撮影用 tmux セッション 'demo' を Panda 配色で構築して attach"
+run = "bin/demo.sh"
+
+[tasks."demo:kill"]
+description = "撮影用 tmux セッション 'demo' を撤収(他セッションは触らない)"
+run = "bin/demo.sh kill"

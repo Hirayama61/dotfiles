@@ -1,0 +1,24 @@
+$ mise run check
+
+==> typecheck  ( tsc --noEmit )
+ok  palette-engine — no type errors
+
+==> lint  ( eslint . )
+ok  142 files, 0 problems
+
+==> test  ( node --test )
+PASS  parse/hex.test.ts          (6 assertions)
+PASS  parse/channel.test.ts      (9 assertions)
+PASS  palette/from.test.ts       (7 assertions)
+PASS  palette/map.test.ts        (5 assertions)
+PASS  color/luminance.test.ts    (8 assertions)
+PASS  color/contrast.test.ts     (4 assertions)
+
+  39 passing  (0.21 s)
+  0 failing
+  0 skipped
+
+==> build  ( bundle )
+ok  dist/palette-engine.js   12.4 kB   ( gzip 4.1 kB )
+
+ALL GREEN — 4 tasks, 0 failures, finished in 1.83 s
