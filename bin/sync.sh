@@ -41,12 +41,15 @@ trap 'rm -f "$NEW"' EXIT
 chezmoi --config "$CONFIG" managed > "$NEW"
 
 if [[ -f "$SNAPSHOT" ]]; then
-  comm -23 <(sort "$SNAPSHOT") <(sort "$NEW") | while IFS= read -r f; do
+  # 深い順(reverse sort)に処理。managed ディレクトリ(chezmoi externals 等)
+  # も orphan になり得るため、子を先に消してから親ディレクトリごと除去する。
+  comm -23 <(sort "$SNAPSHOT") <(sort "$NEW") | sort -r | while IFS= read -r f; do
     [[ -z "$f" ]] && continue
     target="$HOME/$f"
+    [[ "$target" == "$HOME" || "$target" == "/" ]] && continue
     if [[ -e "$target" || -L "$target" ]]; then
       echo "[$NAME] orphan removed: $target"
-      rm -f "$target"
+      rm -rf -- "$target"
     fi
   done
 fi
