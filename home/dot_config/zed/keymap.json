@@ -1,6 +1,6 @@
 // Zed keymap
 //
-// vim_mode: true 前提。Neovim の慣習(旧 prior config 設定)に揃えている。
+// vim_mode: true 前提。Neovim の慣習に揃えている。
 // Reference: https://zed.dev/docs/key-bindings
 // Default keymap は cmd-shift-p → "zed: open default keymap"
 [
