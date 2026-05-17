@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Sensitive-words guard hook
+#
+# ~/.config/git/sensitive-words.txt に列挙した語(1 行 1 パターン、grep -E)が
+# staged diff に現れたらコミットをブロックする。リスト本体は隠したい文字列の
+# 一覧そのものなので git 管理外のローカルファイルに置く(リポには .example のみ)。
+#
+# 誤検知時は git commit --no-verify で回避。リスト不在/staged 空なら素通し。
+
+set -eu
+
+words_file="$HOME/.config/git/sensitive-words.txt"
+[ -f "$words_file" ] || exit 0
+
+diff=$(git diff --cached --diff-filter=ACMR 2>/dev/null || true)
+[ -n "$diff" ] || exit 0
+
+found=0
+while IFS= read -r word || [ -n "$word" ]; do
+  [[ -z "$word" || "$word" == \#* ]] && continue
+
+  matches=$(printf '%s\n' "$diff" | grep -inE "$word" || true)
+  [ -n "$matches" ] || continue
+
+  if [ "$found" -eq 0 ]; then
+    echo "ERROR: 機密語が staged 内容に含まれています。コミットを中止しました。" >&2
+    echo >&2
+    found=1
+  fi
+  echo "  パターン: $word" >&2
+  printf '%s\n' "$matches" | head -5 | sed 's/^/    /' >&2
+  echo >&2
+done < "$words_file"
+
+if [ "$found" -ne 0 ]; then
+  echo "誤検知の場合のみ git commit --no-verify で回避してください。" >&2
+  exit 1
+fi

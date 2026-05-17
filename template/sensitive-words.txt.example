@@ -1,0 +1,20 @@
+# sensitive-words.txt — pre-commit が staged diff に grep -E でかける禁止パターン。
+#
+# このファイルは ~/.config/git/sensitive-words.txt の雛形。実体はマシン固有・
+# git 管理外(リスト自体が隠したい文字列の一覧なので公開リポに入れない)。
+#
+# 規約:
+#   - 1 行 1 パターン。grep -E(拡張正規表現)として解釈、大文字小文字無視。
+#   - 空行と # 始まりはコメント。
+#   - 誤検知時のコミットは git commit --no-verify。
+#
+# 配置: cp template/sensitive-words.txt.example ~/.config/git/sensitive-words.txt
+#       して実値を追記する(下の例は消してよい)。
+
+# 他人/別アカウントの GitHub ハンドル・個人リポ名
+# example-handle
+# example-handle/some-dotfiles
+
+# API トークン等の固定接頭辞
+# ghp_[A-Za-z0-9]{20,}
+# AKIA[0-9A-Z]{16}
