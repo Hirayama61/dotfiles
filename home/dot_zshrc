@@ -24,6 +24,30 @@ source ~/.config/zsh/colors.zsh
 # fzf key bindings (Ctrl+R history, Ctrl+T files, Alt+C cd)
 eval "$(fzf --zsh)"
 
+# 補完プラグイン(本体は .chezmoiexternal.toml で vendoring)。
+# source 順序が要: zsh-completions の fpath 反映 → compinit → fzf-tab →
+# autosuggestions → syntax-highlighting(全 ZLE wrap のため最終必須)。
+fpath=("$HOME/.config/zsh/plugins/zsh-completions/src" $fpath)
+
+zstyle ':completion:*' menu select
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}' 'l:|=* r:|=*'
+zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
+zstyle ':completion:*' group-name ''
+zstyle ':completion:*:descriptions' format '[%d]'
+zstyle ':completion:*' use-cache on
+zstyle ':completion:*' cache-path "${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompcache"
+
+_zcd="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompdump"
+[[ -d "${_zcd:h}" ]] || mkdir -p "${_zcd:h}"
+autoload -Uz compinit
+# 24h 以内は -C でセキュリティチェックを省き起動を高速化
+if [[ -n "$_zcd"(#qN.mh+24) ]]; then compinit -d "$_zcd"; else compinit -C -d "$_zcd"; fi
+unset _zcd
+
+source "$HOME/.config/zsh/plugins/fzf-tab/fzf-tab.plugin.zsh"
+source "$HOME/.config/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh"
+source "$HOME/.config/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+
 # starship prompt
 eval "$(starship init zsh)"
 
@@ -32,6 +56,11 @@ fpath=("$HOME/.config/zsh/functions" $fpath)
 autoload -Uz ghq_fzf_repo
 zle -N ghq_fzf_repo
 bindkey '^g^g' ghq_fzf_repo
+
+# cd 後にディレクトリ内容を表示(`la` と一貫)
+chpwd_eza() { eza -la --group-directories-first --icons=auto --git; }
+typeset -ga chpwd_functions
+chpwd_functions+=(chpwd_eza)
 
 # tmux 自動起動(対話シェル + tmux 外 + エディタ terminal 以外)
 if [[ -z "$TMUX" ]] \

@@ -1,0 +1,23 @@
+# zsh 補完プラグイン本体。プラグインマネージャ(sheldon 等)を入れず chezmoi
+# 自身に vendoring させる(バイナリ依存ゼロ・既存の手動 source モデルに整合)。
+# 読み込み順序は dot_zshrc 側が担保する。
+
+[".config/zsh/plugins/zsh-completions"]
+    type = "git-repo"
+    url = "https://github.com/zsh-users/zsh-completions.git"
+    refreshPeriod = "168h"
+
+[".config/zsh/plugins/fzf-tab"]
+    type = "git-repo"
+    url = "https://github.com/Aloxaf/fzf-tab.git"
+    refreshPeriod = "168h"
+
+[".config/zsh/plugins/zsh-autosuggestions"]
+    type = "git-repo"
+    url = "https://github.com/zsh-users/zsh-autosuggestions.git"
+    refreshPeriod = "168h"
+
+[".config/zsh/plugins/zsh-syntax-highlighting"]
+    type = "git-repo"
+    url = "https://github.com/zsh-users/zsh-syntax-highlighting.git"
+    refreshPeriod = "168h"
