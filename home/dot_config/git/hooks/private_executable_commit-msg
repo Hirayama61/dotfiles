@@ -1,14 +1,40 @@
 #!/usr/bin/env bash
-# Conventional Commits validation hook
+# commit-msg hook: 機密語ガード + Conventional Commits 検証
 #
-# 1行目が以下の形式であることを検証する:
-#   <type>(<optional-scope>)?(!)?: <description>
-#
-# 許可される type: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert
+# 1. ~/.config/git/sensitive-words.txt の各パターンをメッセージ本文に照合
+#    (コメント行・verbose diff のシザー以降は除外)
+# 2. 1 行目が <type>(<scope>)?(!)?: <desc> 形式か検証
+#    type: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert
 
 set -eu
 
 msg_file=$1
+
+words_file="$HOME/.config/git/sensitive-words.txt"
+if [ -f "$words_file" ]; then
+  body=$(sed -e '/^#.*>8/,$d' -e '/^#/d' "$msg_file")
+  if [ -n "$body" ]; then
+    found=0
+    while IFS= read -r word || [ -n "$word" ]; do
+      [[ -z "$word" || "$word" == \#* ]] && continue
+      matches=$(printf '%s\n' "$body" | grep -inE "$word" || true)
+      [ -n "$matches" ] || continue
+      if [ "$found" -eq 0 ]; then
+        echo "ERROR: 機密語がコミットメッセージに含まれています。コミットを中止しました。" >&2
+        echo >&2
+        found=1
+      fi
+      echo "  パターン: $word" >&2
+      printf '%s\n' "$matches" | head -5 | sed 's/^/    /' >&2
+      echo >&2
+    done < "$words_file"
+    if [ "$found" -ne 0 ]; then
+      echo "誤検知の場合のみ git commit --no-verify で回避してください。" >&2
+      exit 1
+    fi
+  fi
+fi
+
 first_line=$(head -1 "$msg_file")
 
 # 自動生成系(merge / revert / rebase fixup 等)はスキップ
