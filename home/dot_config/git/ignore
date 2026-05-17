@@ -1,0 +1,6 @@
+**/.claude/settings.local.json
+TASKS.yaml
+.DS_Store
+._*
+mise.local.toml
+.mise.local.toml
