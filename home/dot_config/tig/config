@@ -8,6 +8,11 @@
 #
 # 末尾コメント = home/.chezmoidata.yaml 上の対応パレット役割。
 
+# git の color.diff.* を取り込まない。~/.gitconfig は truecolor hex 指定だが
+# TERM=tmux-256color は truecolor 非対応 terminfo のため tig が hex を解決できず
+# diff 色が無色化する。以下の ANSI 名定義(端末 Panda パレット参照)だけを使う。
+set git-colors = no
+
 # --- カーソル / 選択行 ---
 color cursor            black   cyan            # fg=panda.bg-ish / bg=panda.cyan(選択強調)
 color title-focus       black   cyan    bold    # アクティブ view タイトル: panda.cyan
