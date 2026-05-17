@@ -61,6 +61,22 @@ return {
       },
     })
 
+    -- 通常バッファからも `-` で oil を開けるようグローバルに張る。oil バッファ
+    -- 内では setup.keymaps 側(バッファローカル)が優先され、ルートでの nvim
+    -- 終了挙動はそのまま維持される。
+    local function dash()
+      if vim.bo.filetype == "oil" then
+        if at_root() then
+          vim.cmd("qa")
+        else
+          oil.open()
+        end
+      else
+        oil.open()
+      end
+    end
+    vim.keymap.set("n", "-", dash, { desc = "親ディレクトリを開く(oil)" })
+
     local grp = vim.api.nvim_create_augroup("OilDefaultPreview", { clear = true })
     vim.api.nvim_create_autocmd("User", {
       group = grp,
