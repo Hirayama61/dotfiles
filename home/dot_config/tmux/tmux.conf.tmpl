@@ -14,11 +14,9 @@ bind r source-file ~/.config/tmux/tmux.conf \; display "設定をリロードし
 # ウィンドウ / ペインの基本
 # ============================
 
-# 番号を 1 始まりに
 set -g base-index 1
 setw -g pane-base-index 1
 
-# ウィンドウを閉じたら自動的に振り直し
 set -g renumber-windows on
 
 # 新しいウィンドウで現在のパスを維持
@@ -83,7 +81,6 @@ set -g focus-events on
 # Escape キーの遅延を減らす(Vim ユーザー向け)
 set -sg escape-time 0
 
-# 履歴の上限を増やす
 set -g history-limit 50000
 
 # ============================

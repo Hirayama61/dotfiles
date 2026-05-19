@@ -11,7 +11,6 @@ return {
     config = function()
       vim.cmd.colorscheme("panda")
       local bg = "#242526"
-      -- 各グループの既存定義を保持したまま背景色だけ差し替える
       for _, group in ipairs({
         "Normal",
         "NormalNC",

@@ -1,5 +1,3 @@
--- キーマップ設定
-
 -- Leader キー(プラグイン読み込み前に設定する必要あり)
 vim.g.mapleader = " "
 vim.g.maplocalleader = " "

@@ -1,5 +1,3 @@
--- Git 統合(gitsigns)
-
 return {
   "lewis6991/gitsigns.nvim",
   event = { "BufReadPre", "BufNewFile" },

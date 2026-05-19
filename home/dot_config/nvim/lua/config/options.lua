@@ -1,5 +1,3 @@
--- 基本設定
-
 -- 行番号
 vim.opt.number = true
 vim.opt.relativenumber = false

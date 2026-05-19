@@ -1,5 +1,3 @@
--- バッファ型ファイラー(Oil.nvim)
-
 return {
   "stevearc/oil.nvim",
   dependencies = { "nvim-tree/nvim-web-devicons" },

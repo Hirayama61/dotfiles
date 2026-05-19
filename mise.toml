@@ -1,6 +1,4 @@
-# dotfiles オーケストレーター
-#
-# 全タスクの入口。dotfiles リポと cc-dotfiles リポの2つを扱う。
+# 全タスクの入口。dotfiles / cc-dotfiles 2 リポを扱う。
 
 [env]
 CC_DOTFILES_DIR = "{{ env.HOME }}/ghq/github.com/Hirayama61/cc-dotfiles"
