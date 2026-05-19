@@ -30,9 +30,79 @@ while IFS= read -r word || [ -n "$word" ]; do
   echo "  パターン: $word" >&2
   printf '%s\n' "$matches" | head -5 | sed 's/^/    /' >&2
   echo >&2
-done < "$words_file"
+done <"$words_file"
 
 if [ "$found" -ne 0 ]; then
   echo "誤検知の場合のみ git commit --no-verify で回避してください。" >&2
   exit 1
 fi
+
+# Secretlint guard
+#
+# staged(追加/変更分)に対し秘密情報スキャン。検出時はコミット中止。
+# mise の npm 隔離インストールでは secretlint 本体と preset-recommend が別の
+# install ディレクトリに入り secretlint のリゾルバが preset を解決できない。
+# preset の node_modules を NODE_PATH で明示してこれを回避する。
+# secretlint / preset 不在時は警告のみで素通し(他ブロックの方針に合わせる)。
+# NUL 区切りはシェル変数に保持できないため -z 出力はパイプ直結で xargs に渡す。
+
+if mise which secretlint >/dev/null 2>&1; then
+  preset_dir=$(mise where "npm:@secretlint/secretlint-rule-preset-recommend" 2>/dev/null || true)
+  if [ -z "$preset_dir" ]; then
+    echo "警告: secretlint preset が見つかりません。mise install を実行してください。" >&2
+  else
+    staged_count=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$staged_count" -gt 0 ]; then
+      if ! git diff --cached --name-only -z --diff-filter=ACM |
+        NODE_PATH="$preset_dir/lib/node_modules" xargs -0 mise exec -- secretlint 2>/dev/null; then
+        echo "ERROR: secretlint が秘密情報を検出しました。コミットを中止しました。" >&2
+        echo "誤検知の場合のみ git commit --no-verify で回避してください。" >&2
+        exit 1
+      fi
+    fi
+  fi
+else
+  echo "警告: secretlint が見つかりません。mise install を実行してください。" >&2
+fi
+
+# shfmt auto-format
+#
+# staged の .sh を自動整形して再 stage する。インデントは本リポの全シェル
+# スクリプトが2スペース統一のため -i 2(タブ基底は皆無)。不在時は素通し。
+
+if mise which shfmt >/dev/null 2>&1; then
+  sh_files=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep '\.sh$' || true)
+  if [ -n "$sh_files" ]; then
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      mise exec -- shfmt -i 2 -w "$f"
+      git add "$f"
+    done <<<"$sh_files"
+  fi
+fi
+
+# Shellcheck static analysis
+#
+# staged の .sh を静的解析(-x で source 追従)。問題検出でコミット中止。
+# 解析ツール不在時は警告のみで素通し。
+
+if mise which shellcheck >/dev/null 2>&1; then
+  sh_files=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep '\.sh$' || true)
+  if [ -n "$sh_files" ]; then
+    sc_failed=0
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      if ! mise exec -- shellcheck -x "$f"; then
+        sc_failed=1
+      fi
+    done <<<"$sh_files"
+    if [ "$sc_failed" -ne 0 ]; then
+      echo "ERROR: shellcheck が問題を検出しました。修正してからコミットしてください。" >&2
+      exit 1
+    fi
+  fi
+else
+  echo "警告: shellcheck が見つかりません。mise install を実行してください。" >&2
+fi
+
+exit 0
