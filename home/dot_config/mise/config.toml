@@ -14,6 +14,7 @@ ghq = "latest"
 eza = "latest"          # ls 代替(Panda 配色は zshrc の EZA_COLORS)
 node = "lts"
 "npm:@antfu/ni" = "latest"
+rust = { version = "latest", components = "rust-analyzer" }
 
 # シェルスクリプト品質ゲート。グローバル git pre-commit から mise exec で呼ぶ。
 shellcheck = "latest"
