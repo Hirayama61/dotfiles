@@ -17,6 +17,7 @@ cask "ghostty"        # ターミナルエミュレータ
 cask "zed"            # エディタ
 cask "raycast"        # ランチャー / Spotlight 代替
 cask "coderabbit"     # CLI レビュー本体。/self-review と /coderabbit:review が利用
+cask "obsidian"       # 永続記憶 vault(~/obsidian/brain)の閲覧 / グラフ表示
 
 # Fonts
 cask "font-jetbrains-mono-nerd-font"  # Ghostty フォント(可読性重視・Nerd Font アイコン込み)

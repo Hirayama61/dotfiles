@@ -92,6 +92,16 @@ run = "brew bundle dump --force --file=./Brewfile"
 description = "削除自動化用 snapshot キャッシュをクリア"
 run = "rm -rf \"${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles\""
 
+# ─── 外部 skill / Obsidian 外部脳 ─────────────────────
+
+[tasks."skills:sync"]
+description = "ext-skills.txt の外部 skill を ghq clone & ~/.claude/skills へ symlink"
+run = "bin/skills-sync.sh"
+
+[tasks."obsidian:init"]
+description = "Obsidian 外部脳 vault(~/obsidian/brain)の空構造を冪等生成 (手動1回想定)"
+run = "$HOME/.claude/skills/obsidian-memory/scripts/init-vault.sh"
+
 # ─── macOS システム設定 ───────────────────────────────
 
 [tasks.macos]
