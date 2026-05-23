@@ -22,11 +22,14 @@ set -g renumber-windows on
 # 新しいウィンドウで現在のパスを維持
 bind c new-window -c "#{pane_current_path}"
 
-# ペイン分割(現在のパスを維持)
+# ペイン分割(現在のパスを維持)。| = 左右、_ = 素の上下分割(中段の再分割など稀ケース用)。
 bind | split-window -h -c "#{pane_current_path}"
-bind - split-window -v -c "#{pane_current_path}"
+bind _ split-window -v -c "#{pane_current_path}"
 unbind '"'
 unbind %
+
+# - = フル幅の行を追加して全行を均等高に(行内の左右分割は保持)。通常の縦増設はこちら。
+bind - run-shell "~/.config/tmux/split-even.sh v"
 
 # ============================
 # ペイン間の移動(Vim 風)
