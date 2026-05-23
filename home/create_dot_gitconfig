@@ -1,0 +1,6 @@
+# このファイルは chezmoi の create_ で「初回のみ」生成される薄い include shim。
+# 共有設定の本体は ~/.config/git/config(dotfiles リポ管理)。
+# git config --global の書込先(CodeRabbit の machineId 等の端末ローカル値)を
+# ここに吸収し、公開リポ管理下から隔離する。chezmoi はこのファイルを以後上書きしない。
+[include]
+    path = ~/.config/git/config
