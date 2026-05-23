@@ -34,20 +34,57 @@ wanted=""
 linked=0
 pruned=0
 
+# 各行を 3 形態で解釈する(ヘッダコメント参照):
+#   A. owner/repo:subdir          コロンあり。subdir 直下を複数 symlink
+#   B. owner/repo/path/to/skill   コロンなし & 3 セグメント以上。1 ディレクトリを単体 symlink
+#   C. owner/repo                 コロンなし & 2 セグメント。subdir 既定 skills で複数 symlink
+# ghq get の対象はいずれも先頭 2 セグメント owner/repo。
 while IFS= read -r line; do
   line="${line%%#*}"
   line="$(echo "$line" | xargs)"
   [[ -z "$line" ]] && continue
 
-  repo="${line%%:*}"
-  subdir="${line#*:}"
-  [[ "$subdir" == "$line" ]] && subdir="skills"
+  mode="multi"
+  skillpath=""
+  if [[ "$line" == *:* ]]; then
+    spec="${line%%:*}"
+    subdir="${line#*:}"
+  else
+    # スラッシュ以外を除去して区切り数を数える(連想配列不要の bash 3.2 互換)。
+    slashes="${line//[!\/]/}"
+    if [[ ${#slashes} -ge 2 ]]; then
+      owner="${line%%/*}"
+      rest="${line#*/}"
+      spec="$owner/${rest%%/*}"
+      skillpath="${rest#*/}"
+      skillpath="${skillpath%/}"
+      mode="single"
+    else
+      spec="$line"
+      subdir="skills"
+    fi
+  fi
 
-  ghq get -u "$repo"
+  ghq get -u "$spec"
+  repo_root="$(ghq root)/github.com/$spec"
 
-  src_root="$(ghq root)/github.com/$repo/$subdir"
+  if [[ "$mode" == "single" ]]; then
+    skill_dir="$repo_root/$skillpath"
+    [[ -f "$skill_dir/SKILL.md" ]] || {
+      echo "skip (no SKILL.md): $spec/$skillpath" >&2
+      continue
+    }
+    name="$(basename "$skill_dir")"
+    ln -sfn "$skill_dir" "$SKILLS_DIR/$name"
+    wanted="$wanted$name"$'\n'
+    linked=$((linked + 1))
+    echo "linked: $name -> $skill_dir"
+    continue
+  fi
+
+  src_root="$repo_root/$subdir"
   [[ -d "$src_root" ]] || {
-    echo "skip (no subdir): $repo/$subdir" >&2
+    echo "skip (no subdir): $spec/$subdir" >&2
     continue
   }
 
