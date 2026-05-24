@@ -58,3 +58,6 @@ keymap("n", "<leader>O", "O<Esc>", { desc = "上に空行を挿入" })
 
 -- 全選択
 keymap("n", "<C-a>", "ggVG", { desc = "全選択" })
+
+-- ヘルプ
+keymap("n", "<leader>?", function() require("config.cheatsheet").open() end, { desc = "ヘルプ: 操作チートシート" })
