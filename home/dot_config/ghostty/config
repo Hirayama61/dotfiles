@@ -11,6 +11,10 @@ theme = panda
 # 反映されない場合は `ghostty +list-fonts | grep -i jetbrains` でファミリ名を確認する。
 # Mono = アイコンも等幅でターミナル向き。
 font-family = JetBrainsMono Nerd Font Mono
+# 日本語フォールバック (JetBrains Mono は和文グリフ非搭載。未指定だと Ghostty が
+# Osaka/BIZ UDGothic 等へ勝手に落ちて字形・字幅が乱れる)。2 行目以降の font-family
+# は欠落コードポイント用フォールバック。試行中: Hiragino → 不満なら合成フォントへ。
+font-family = "Hiragino Sans"
 font-size = 14
 
 # ウィンドウ
