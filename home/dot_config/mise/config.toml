@@ -11,6 +11,7 @@ tmux = "latest"
 neovim = "latest"
 starship = "latest"
 ghq = "latest"
+"github:d-kuro/gwq" = "latest"  # git worktree マネージャ。ghq と対で並行作業用 worktree を管理(release のプレビルド取得)
 eza = "latest"          # ls 代替(Panda 配色は zshrc の EZA_COLORS)
 node = "lts"
 "npm:@antfu/ni" = "latest"

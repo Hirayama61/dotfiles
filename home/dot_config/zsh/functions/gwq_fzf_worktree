@@ -1,0 +1,22 @@
+# gwq の worktree を fzf で選択して cd する ZLE widget
+# bindkey: Ctrl+G Ctrl+W
+#
+# gwq cd はネイティブ対話選択を持つが、既定で新シェルを起動する(launch_shell=false に
+# しても gwq の completion/shell-integration を source する必要があり ZLE と噛み合わない)。
+# よって ghq_fzf_repo と同型に、gwq が print するパスを fzf で選んで cd する。
+#
+# パス抽出は --json + jq。素の `gwq list` は表組み(ui.icons 込み)で機械処理に向かないため。
+# 前提: gwq list -g --json の各要素が絶対パスを .path フィールドで持つ(要バイナリ導入後に確認)。
+
+local worktree
+worktree=$(gwq list -g --json 2>/dev/null | jq -r '.[].path' \
+  | fzf --height 40% --layout=reverse --border \
+    --preview 'git -C {} -c color.status=always status -sb 2>/dev/null; echo; \
+               eza --icons --tree --level=2 {} 2>/dev/null || ls -la {}')
+
+if [[ -n "$worktree" ]]; then
+  BUFFER="cd ${worktree/#$HOME/~}"
+  zle accept-line
+else
+  zle reset-prompt
+fi

@@ -49,10 +49,13 @@ source "$HOME/.config/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlightin
 eval "$(starship init zsh)"
 
 # ghq_fzf_repo: Ctrl+G Ctrl+G で ghq 配下リポを fzf 選択して cd
+# gwq_fzf_worktree: Ctrl+G Ctrl+W で gwq の worktree を fzf 選択して cd
 fpath=("$HOME/.config/zsh/functions" $fpath)
-autoload -Uz ghq_fzf_repo
+autoload -Uz ghq_fzf_repo gwq_fzf_worktree
 zle -N ghq_fzf_repo
+zle -N gwq_fzf_worktree
 bindkey '^g^g' ghq_fzf_repo
+bindkey '^g^w' gwq_fzf_worktree
 
 # cd 後にディレクトリ内容を表示(`la` と一貫)
 chpwd_eza() { eza -la --group-directories-first --icons=auto --git; }

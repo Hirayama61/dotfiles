@@ -1,0 +1,13 @@
+# gwq グローバル設定 (~/.config/gwq/config.toml)
+#
+# 既定値が既に目的の配置(~/worktrees/host/owner/repo/branch = ghq と同型)に
+# 一致するため、ここでは「意図を明示する最小限」だけを書く。
+# カレントに .gwq.toml を置けばリポ単位で上書きできる。
+
+[worktree]
+basedir = "~/worktrees"  # ghq の clone 群と同じ root に worktree を並べ fzf 横断検索を可能にする
+auto_mkdir = true        # basedir 配下の中間ディレクトリを自動生成
+
+[naming]
+# ghq の host/owner/repo 配置に branch を足した形。ghq_fzf / gwq_fzf を同一感覚で使うため揃える。
+template = "{{.Host}}/{{.Owner}}/{{.Repository}}/{{.Branch}}"
