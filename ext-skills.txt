@@ -7,3 +7,4 @@
 # symlink は再配布ではない(本体は ghq clone でローカルに置く)ため LICENSE 同梱は不要。
 kepano/obsidian-skills:skills                          # MIT. Obsidian ネイティブ形式(wikilink/bases/canvas/cli)
 mattpocock/skills/skills/engineering/grill-with-docs   # MIT. カテゴリ階層ネストの monorepo から 1 skill だけ単体 symlink
+mizchi/skills/empirical-prompt-tuning                  # MIT(リポ既定). ルート直下に並ぶ monorepo から 1 skill だけ単体 symlink
