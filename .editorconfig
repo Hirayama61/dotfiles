@@ -1,0 +1,19 @@
+# EditorConfig — エディタ / 整形ツール横断のフォーマット規約
+# https://editorconfig.org
+#
+# shfmt は本ファイルの indent 設定を尊重するため、shell も含め 2 スペースが
+# 暗黙知でなく明示・自動になる(shfmt のデフォルトはタブなので、これが無いと
+# `-i 2` を毎回指定する必要があり踏み外しやすい)。
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Markdown は行末2スペースが hard line break として意味を持つため除外。
+[*.md]
+trim_trailing_whitespace = false
