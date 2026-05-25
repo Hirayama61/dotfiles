@@ -27,12 +27,41 @@ if [ -f "$words_file" ]; then
       echo "  パターン: $word" >&2
       printf '%s\n' "$matches" | head -5 | sed 's/^/    /' >&2
       echo >&2
-    done < "$words_file"
+    done <"$words_file"
     if [ "$found" -ne 0 ]; then
       echo "誤検知の場合のみ git commit --no-verify で回避してください。" >&2
       exit 1
     fi
   fi
+fi
+
+# ローカル commit-msg hook のチェーン実行
+#
+# core.hooksPath をグローバル設定しているため、各リポの husky/lefthook/標準
+# .git/hooks は本来 git 仕様で完全バイパスされる。機密語ガード(security)を
+# 通した後、ローカル commit-msg hook があれば exec 委譲し、グローバルの
+# Conventional Commits 検証はスキップする(メッセージ整形ポリシーはプロジェクト
+# 側を優先し、二重検証・競合を避ける)。exec で置換するため以降の処理は無い。
+# ローカル hook が無い場合だけ、下のグローバル CC 検証へフォールスルーする。
+
+# husky v9+
+if [ -x ".husky/commit-msg" ]; then
+  exec .husky/commit-msg "$msg_file"
+fi
+
+# lefthook(PATH 直 → mise の順で検出。設定は lefthook.yml / lefthook.yaml を対象)
+if [ -f "lefthook.yml" ] || [ -f "lefthook.yaml" ]; then
+  if command -v lefthook >/dev/null 2>&1; then
+    exec lefthook run commit-msg "$msg_file"
+  elif mise which lefthook >/dev/null 2>&1; then
+    exec mise exec -- lefthook run commit-msg "$msg_file"
+  fi
+fi
+
+# 標準ローカルフック(.git/hooks/commit-msg)
+git_dir=$(git rev-parse --git-dir 2>/dev/null || true)
+if [ -n "$git_dir" ] && [ -x "$git_dir/hooks/commit-msg" ]; then
+  exec "$git_dir/hooks/commit-msg" "$msg_file"
 fi
 
 first_line=$(head -1 "$msg_file")
