@@ -105,4 +105,31 @@ else
   echo "警告: shellcheck が見つかりません。mise install を実行してください。" >&2
 fi
 
+# ローカルフックのチェーン実行
+#
+# core.hooksPath をグローバル設定しているため、各リポの husky/lefthook/標準
+# .git/hooks は本来 git 仕様で完全バイパスされる。上の security/品質ゲートを
+# 全通過した後にここで明示委譲し、プロジェクト固有 pre-commit も走らせる。
+# exec でプロセス置換するため、いずれかが起動したら以降の処理は無い。
+
+# husky v9+
+if [ -x ".husky/pre-commit" ]; then
+  exec .husky/pre-commit "$@"
+fi
+
+# lefthook(PATH 直 → mise の順で検出。設定は lefthook.yml / lefthook.yaml を対象)
+if [ -f "lefthook.yml" ] || [ -f "lefthook.yaml" ]; then
+  if command -v lefthook >/dev/null 2>&1; then
+    exec lefthook run pre-commit
+  elif mise which lefthook >/dev/null 2>&1; then
+    exec mise exec -- lefthook run pre-commit
+  fi
+fi
+
+# 標準ローカルフック(.git/hooks/pre-commit)
+git_dir=$(git rev-parse --git-dir 2>/dev/null || true)
+if [ -n "$git_dir" ] && [ -x "$git_dir/hooks/pre-commit" ]; then
+  exec "$git_dir/hooks/pre-commit" "$@"
+fi
+
 exit 0
