@@ -9,5 +9,8 @@
     "additionalDirectories": [
       "/Users/h61/ghq/github.com/Hirayama61/cc-dotfiles"
     ]
+  },
+  "worktree": {
+    "bgIsolation": "none"
   }
 }
