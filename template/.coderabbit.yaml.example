@@ -1,0 +1,40 @@
+# .coderabbit.yaml — CodeRabbit AI レビューの設定。
+#
+# このファイルは配布用の雛形。CodeRabbit を効かせたいリポの「ルート直下」に
+#   cp template/.coderabbit.yaml.example .coderabbit.yaml
+# で置いて使う(dotfiles リポ専用ではなく、各リポへ配る出発点)。実体 .coderabbit.yaml は
+# 各リポ側に置く。dotfiles の chezmoi/apply 対象ではない(自動配置はしない)。
+#
+# 各キーの公式リファレンス: https://docs.coderabbit.ai/reference/configuration
+# 値を変えれば挙動が変わる。下のコメントを目印に各自のリポに合わせて調整する。
+
+# レビューコメントの言語。"ja" で日本語(ja-JP も可)。
+language: "ja"
+
+reviews:
+  # レビューの tone(辛口度)。assertive = 指摘多め・踏み込んだ指摘。
+  # 控えめにしたいなら chill に変える。
+  profile: assertive
+
+  # walkthrough 末尾の poem(自動生成の詩)を出さない。
+  poem: false
+
+  auto_review:
+    # PR/push に対する自動レビューを有効化。
+    enabled: true
+
+    # draft PR もレビュー対象に含める。
+    drafts: true
+
+    # base_branches は「指定しない=全ブランチが base のレビューを受ける」。
+    # 特定の base ブランチだけに絞りたい場合は、以下を有効化して正規表現で列挙する。
+    # base_branches:
+    #   - "main"
+    #   - "develop"
+
+# 他リポの知見(コーディング規約や設計判断)を横断参照させたい場合に有効化する。
+# リポごとに関連先が違うので既定では無効(コメントアウト)。各自のリポに合わせて編集すること。
+# knowledge_base:
+#   linked_repositories:
+#     - repository: "Hirayama61/cc-dotfiles"
+#       instructions: "Claude Code の設定・規約リポ。共通の運用方針やレビュー観点を参照する。"

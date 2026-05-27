@@ -37,6 +37,16 @@ mise run diff             # 適用前差分
 mise run update           # git pull → apply
 ```
 
+## CodeRabbit レビュー設定テンプレ
+
+CodeRabbit を効かせたいリポのルートに、雛形をコピーして使う(各リポ側で管理。dotfiles の apply 対象外):
+
+```sh
+cp template/.coderabbit.yaml.example <運用先リポ>/.coderabbit.yaml
+```
+
+詳細は [CLAUDE.md](./CLAUDE.md) の「CodeRabbit レビュー設定テンプレ」節を参照。
+
 ## 構成
 
 詳細は [CLAUDE.md](./CLAUDE.md) を参照。
