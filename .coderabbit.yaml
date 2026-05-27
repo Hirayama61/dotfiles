@@ -18,10 +18,11 @@ reviews:
     # draft PR もレビュー対象に含める。
     drafts: true
 
-    # base_branches 未指定 = 全ブランチが base のレビュー対象。絞るなら以下を有効化して列挙。
-    # base_branches:
-    #   - "main"
-    #   - "develop"
+    # base_branches 未指定だと既定ブランチ(main)への PR しか自動レビューされない。
+    # 全ブランチを base 対象にするため ".*" を指定(epic ブランチ向け feature PR 等も拾う)。
+    # 絞りたい場合はここを正規表現リストに変える(例: - "main" / - "epic/.*")。
+    base_branches:
+      - ".*"
 
 # 他リポの知見を横断参照させたい場合に有効化(item キーは repository。name は無効)。
 # knowledge_base:
