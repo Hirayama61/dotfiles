@@ -1,0 +1,5 @@
+model = "gpt-5.5"                          # ★導入後に codex で実在モデル名を確認して差し替え
+sandbox_mode = "read-only"
+approval_policy = "never"
+# auth.json をファイル生成させず chezmoi 管理対象との衝突を回避する(token は OS keyring へ)。
+cli_auth_credentials_store = "keyring"
