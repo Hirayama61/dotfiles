@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# 既存マシン移行ガード: 既存 ~/.gitconfig に共有設定 include を冪等に補う。
+#
+# fresh マシンは create_dot_gitconfig が ~/.gitconfig を生成するため、ここは
+# -f 判定で no-op になる。既に ~/.gitconfig があるマシンでは create_ が一切
+# 触れず include 行が永久に追記されない(= hooksPath 等の共有設定が無言で
+# 無効化される)ため、ここで補正する。run_once だが grep でも二重追記を防ぎ
+# 内容自体で冪等性を担保する。
+
+set -euo pipefail
+
+gitconfig="{{ .chezmoi.homeDir }}/.gitconfig"
+
+[ -f "$gitconfig" ] || exit 0
+
+if grep -qF '.config/git/config' "$gitconfig"; then
+  exit 0
+fi
+
+printf '\n[include]\n\tpath = ~/.config/git/config\n' >>"$gitconfig"
+echo "[ensure-gitconfig-include] ~/.gitconfig に共有設定 include を追記しました。"
