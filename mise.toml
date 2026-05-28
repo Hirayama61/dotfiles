@@ -35,13 +35,26 @@ fi
 
 [tasks.diff]
 description = "両リポの pending diff を表示"
+# source-aware: bin/chezmoi-source.sh は cwd の repo キー == name のとき toplevel パス(値のみ)を返す。
+# worktree 内で実行すれば worktree の編集が diff に映る(apply 側と挙動を揃える)。
+# 値は --source "$src" と引用付きで渡す(空白/グロブ含みパスでの語分割を防ぐ)。
 run = """
 echo "=== dotfiles ==="
-chezmoi --config "$CHEZMOI_DOTFILES" diff || true
+src="$(bin/chezmoi-source.sh dotfiles)"
+if [ -n "$src" ]; then
+  chezmoi --config "$CHEZMOI_DOTFILES" --source "$src" diff || true
+else
+  chezmoi --config "$CHEZMOI_DOTFILES" diff || true
+fi
 if [[ -d "$CC_DOTFILES_DIR" ]]; then
   echo
   echo "=== cc-dotfiles ==="
-  chezmoi --config "$CHEZMOI_CC_DOTFILES" diff || true
+  src="$(bin/chezmoi-source.sh cc-dotfiles)"
+  if [ -n "$src" ]; then
+    chezmoi --config "$CHEZMOI_CC_DOTFILES" --source "$src" diff || true
+  else
+    chezmoi --config "$CHEZMOI_CC_DOTFILES" diff || true
+  fi
 fi
 """
 
