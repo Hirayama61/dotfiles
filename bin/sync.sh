@@ -35,10 +35,20 @@ SNAPSHOT="$SNAPSHOT_DIR/${NAME}-managed.txt"
 
 mkdir -p "$SNAPSHOT_DIR"
 
+# source-aware: cwd が NAME と同じ repo の作業ツリー(worktree 含む)なら
+# その toplevel を --source に渡し、worktree 内の編集も apply/diff が読めるようにする。
+# managed(削除自動化 snapshot)と apply の双方に同一 SOURCE_ARGS を渡すこと。
+# 片方だけに付けると snapshot と apply の source が食い違い、誤った orphan 削除を招く。
+# 配列展開は ${a[@]+...} で空ガードする(macOS 既定 bash 3.2 では set -u 下で
+# 空配列の "${a[@]}" が unbound variable で落ちるため)。
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+SOURCE_ARGS=()
+read -r -a SOURCE_ARGS <<<"$("$SCRIPT_DIR/chezmoi-source.sh" "$NAME")"
+
 NEW=$(mktemp)
 trap 'rm -f "$NEW"' EXIT
 
-chezmoi --config "$CONFIG" managed > "$NEW"
+chezmoi --config "$CONFIG" "${SOURCE_ARGS[@]+"${SOURCE_ARGS[@]}"}" managed > "$NEW"
 
 if [[ -f "$SNAPSHOT" ]]; then
   # 深い順(reverse sort)に処理。managed ディレクトリ(chezmoi externals 等)
@@ -55,4 +65,4 @@ if [[ -f "$SNAPSHOT" ]]; then
 fi
 
 cp "$NEW" "$SNAPSHOT"
-chezmoi --config "$CONFIG" apply ${FORCE:+--force}
+chezmoi --config "$CONFIG" "${SOURCE_ARGS[@]+"${SOURCE_ARGS[@]}"}" apply ${FORCE:+--force}
