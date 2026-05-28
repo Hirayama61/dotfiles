@@ -99,7 +99,7 @@ echo "  2. 新しいシェルを開く(tmux 自動起動が走る)"
 description = "個人PC専用: Codex CLI を導入(業務PCでは実行しない)"
 # bootstrap の brew bundle には載せず、個人PC でだけ明示的に流す
 # (業務PC には codex を入れない方針のため Brewfile から分離)。
-run = "brew install --cask codex"
+run = "brew list --cask codex >/dev/null 2>&1 || brew install --cask codex"
 
 # ─── メンテナンス ─────────────────────────────────────
 
