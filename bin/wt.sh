@@ -26,6 +26,12 @@
 
 set -euo pipefail
 
+# パス導出(origin URL → host/owner/repo → ~/worktrees/.../<branch>)は WorktreeCreate
+# hook(cc-dotfiles)と共有する単一情報源 lib に切り出してある。drift 防止のため
+# 必ず lib の関数を使い、ここでパースを再実装しない(決定 a1)。
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+. "$SCRIPT_DIR/lib/resolve-worktree-path.sh"
+
 # ── 引数チェック ───────────────────────────────────────
 if [[ $# -lt 1 || $# -gt 2 ]]; then
   echo "Usage: $0 <branch> [<base-ref>]" >&2
@@ -46,52 +52,18 @@ if ! git rev-parse --git-dir &>/dev/null; then
   exit 1
 fi
 
-# ── origin URL を host/owner/repo にパース ────────────
-# git@host:owner/repo(.git) と https://host/owner/repo(.git) の両対応。
+# ── origin URL から目標パスを導出(lib に委譲)────────
+# 失敗理由を分けてユーザに示すため、空 origin だけ先に判定し、残りは lib に委ねる。
 ORIGIN_URL="$(git remote get-url origin 2>/dev/null || true)"
 if [[ -z "$ORIGIN_URL" ]]; then
   echo "wt.sh: origin リモートがありません。host/owner/repo を解決できません。" >&2
   exit 1
 fi
 
-# scheme/credential を剥がして host/path を取り出す。
-url="$ORIGIN_URL"
-url="${url%.git}" # 末尾 .git を除去
-if [[ "$url" == git@*:* ]]; then
-  # SCP 風: git@host:owner/repo
-  host="${url#git@}"
-  host="${host%%:*}"
-  path="${url#*:}"
-elif [[ "$url" == ssh://* || "$url" == https://* || "$url" == http://* ]]; then
-  # URL 風: scheme://[user@]host/owner/repo
-  rest="${url#*://}"
-  rest="${rest#*@}" # user@ があれば除去
-  host="${rest%%/*}"
-  host="${host%%:*}" # host:port があれば port 除去
-  path="${rest#*/}"
-else
-  echo "wt.sh: origin URL の形式を解釈できません: $ORIGIN_URL" >&2
-  exit 1
-fi
-
-# path は owner/repo を期待(2 セグメント以上必須)。
-if [[ "$path" != */* ]]; then
+TARGET="$(resolve_worktree_path "$BRANCH" .)" || {
   echo "wt.sh: origin URL から host/owner/repo を解決できません: $ORIGIN_URL" >&2
   exit 1
-fi
-owner="${path%%/*}"
-repo="${path#*/}"
-if [[ -z "$host" || -z "$owner" || -z "$repo" ]]; then
-  echo "wt.sh: origin URL から host/owner/repo を解決できません: $ORIGIN_URL" >&2
-  exit 1
-fi
-
-# ── 目標パスを gwq naming に一致させて算出 ────────────
-# WT_BASEDIR = gwq config [worktree].basedir、NAMING = [naming].template の展開。
-#   template: {{.Host}}/{{.Owner}}/{{.Repository}}/{{.Branch}}
-# ブランチ名の "/" はサブディレクトリになる(gwq と同じ)。
-WT_BASEDIR="$HOME/worktrees"
-TARGET="$WT_BASEDIR/$host/$owner/$repo/$BRANCH"
+}
 
 # ── ネストガード: 現リポ作業ツリー内に来ないか ────────
 TOPLEVEL="$(git rev-parse --show-toplevel 2>/dev/null || true)"
