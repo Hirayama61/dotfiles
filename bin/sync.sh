@@ -81,6 +81,11 @@ if [[ -f "$SNAPSHOT" ]]; then
   # も orphan になり得るため、子を先に消してから親ディレクトリごと除去する。
   comm -23 <(sort "$SNAPSHOT") <(sort "$NEW") | sort -r | while IFS= read -r f; do
     [[ -z "$f" ]] && continue
+    # chezmoi managed は $HOME 相対パスのみ返す前提。rm -rf は不可逆なので、
+    # 仕様変更や source 異常で先頭 /(絶対パス)や .. コンポーネント(親への脱出)が
+    # 混じった行は $HOME 外を壊しうる。防御的に skip する(#17)。
+    case "$f" in /*) echo "[$NAME] orphan skipped (absolute path): $f" >&2; continue ;; esac
+    case "/$f/" in */../*) echo "[$NAME] orphan skipped (parent traversal): $f" >&2; continue ;; esac
     target="$HOME/$f"
     [[ "$target" == "$HOME" || "$target" == "/" ]] && continue
     if [[ -e "$target" || -L "$target" ]]; then
