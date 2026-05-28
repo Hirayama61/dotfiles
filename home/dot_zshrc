@@ -68,5 +68,5 @@ if [[ -z "$TMUX" ]] \
    && [[ "$TERM_PROGRAM" != "vscode" ]] \
    && [[ "$TERM_PROGRAM" != "zed" ]] \
    && command -v tmux >/dev/null 2>&1; then
-  exec tmux new-session -A -s default
+  exec tmux new-session -A -s 0
 fi
