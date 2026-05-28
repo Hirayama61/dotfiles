@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# chezmoi-source.sh — source-aware な chezmoi --source 引数を解決する単一情報源。
+# chezmoi-source.sh — source-aware な chezmoi の source(toplevel パス)を解決する単一情報源。
 #
 # Usage: bin/chezmoi-source.sh <name>
 #   <name> = 論理 repo キー(dotfiles / cc-dotfiles)。bin/sync.sh の NAME 引数と揃える。
 #
 # 出力(stdout, 改行なし):
-#   - cwd の論理 repo キーが <name> と一致するとき: "--source <toplevel>"
-#     ($PWD が属する git 作業ツリー(main clone or worktree)の root を source に渡す)。
+#   - cwd の論理 repo キーが <name> と一致するとき: source に使う toplevel パス(値のみ・フラグ無し)。
+#     呼び出し側が --source "<値>" と引用付きで組む。フラグ込み文字列を吐いて空白で再分割させると
+#     パスに空白/グロブが入ったとき壊れ、誤 source → managed 誤判定 → orphan 誤削除に連鎖しうるため、
+#     値のみ出力して受け側でクォートする(空白パス安全)。
+#     ($PWD が属する git 作業ツリー(main clone or worktree)の root)。
 #   - 一致しない / non-git / 引数なし: 空文字(呼び出し側は toml の sourceDir に fallback)。
 #
 # 設計意図:
@@ -44,7 +47,8 @@ repo_root="$(cd "$common_dir/.." 2>/dev/null && pwd -P || true)"
 [[ -z "$repo_root" ]] && exit 0
 repo_key="$(basename -- "$repo_root")"
 
-# cwd の repo キーが NAME と一致するときだけ source を上書きする。
+# cwd の repo キーが NAME と一致するときだけ source(toplevel パス)を出力する。
+# フラグは付けない(受け側が --source "<値>" と引用付きで組む)。
 if [[ "$repo_key" == "$NAME" ]]; then
-  printf -- '--source %s' "$toplevel"
+  printf '%s' "$toplevel"
 fi

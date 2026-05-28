@@ -39,11 +39,13 @@ mkdir -p "$SNAPSHOT_DIR"
 # その toplevel を --source に渡し、worktree 内の編集も apply/diff が読めるようにする。
 # managed(削除自動化 snapshot)と apply の双方に同一 SOURCE_ARGS を渡すこと。
 # 片方だけに付けると snapshot と apply の source が食い違い、誤った orphan 削除を招く。
+# ヘルパーは値(toplevel パス)のみ返すので --source "$_src" と引用付きで組む(空白/グロブ安全)。
 # 配列展開は ${a[@]+...} で空ガードする(macOS 既定 bash 3.2 では set -u 下で
 # 空配列の "${a[@]}" が unbound variable で落ちるため)。
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 SOURCE_ARGS=()
-read -r -a SOURCE_ARGS <<<"$("$SCRIPT_DIR/chezmoi-source.sh" "$NAME")"
+_src="$("$SCRIPT_DIR/chezmoi-source.sh" "$NAME")"
+[[ -n "$_src" ]] && SOURCE_ARGS=(--source "$_src")
 
 NEW=$(mktemp)
 trap 'rm -f "$NEW"' EXIT
