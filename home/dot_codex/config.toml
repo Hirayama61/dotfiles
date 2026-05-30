@@ -1,0 +1,11 @@
+# model は明示せず codex のデフォルトに委ねる(実在名が流動的なため固定しない)。
+# 上位 reasoning モデルを固定したい場合のみ model = "..." を追記。
+# sandbox_mode と approval_policy は相互依存。read-only + never は安全
+# (書込・ネットワーク不可なので無承認でも実害が出ない)。
+# sandbox_mode を workspace-write / danger-full-access に引き上げる場合は、
+# approval_policy を never のままにしない(書込許可 + 無承認は危険)。
+# untrusted / on-request 等へ併せて見直すこと。
+sandbox_mode = "read-only"
+approval_policy = "never"
+# auth.json をファイル生成させず chezmoi 管理対象との衝突を回避する(token は OS keyring へ)。
+cli_auth_credentials_store = "keyring"
