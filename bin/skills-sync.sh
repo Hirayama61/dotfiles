@@ -33,6 +33,7 @@ mkdir -p "$SKILLS_DIR"
 wanted=""
 linked=0
 pruned=0
+failed=0
 
 # 各行を 3 形態で解釈する(ヘッダコメント参照):
 #   A. owner/repo:subdir          コロンあり。subdir 直下を複数 symlink
@@ -70,8 +71,11 @@ while IFS= read -r line; do
 
   if [[ "$mode" == "single" ]]; then
     skill_dir="$repo_root/$skillpath"
+    # 明示指定が取れない=upstream のパス移動など陳腐化の兆候。無言 skip だと
+    # prune で既存 symlink が消えても気づけないため WARN + 失敗計上する。
     [[ -f "$skill_dir/SKILL.md" ]] || {
-      echo "skip (no SKILL.md): $spec/$skillpath" >&2
+      echo "WARN: SKILL.md なし(パス陳腐化の疑い): $spec/$skillpath" >&2
+      failed=$((failed + 1))
       continue
     }
     name="$(basename "$skill_dir")"
@@ -84,18 +88,27 @@ while IFS= read -r line; do
 
   src_root="$repo_root/$subdir"
   [[ -d "$src_root" ]] || {
-    echo "skip (no subdir): $spec/$subdir" >&2
+    echo "WARN: subdir なし(パス陳腐化の疑い): $spec/$subdir" >&2
+    failed=$((failed + 1))
     continue
   }
 
+  # subdir 内の個々の SKILL.md 不在は(他が取れていれば)正常。だが行全体で
+  # 0 link はこの repo から1つも取れていない=異常として WARN + 失敗計上する。
+  linked_here=0
   for skill in "$src_root"/*/; do
     [[ -f "$skill/SKILL.md" ]] || continue
     name="$(basename "$skill")"
     ln -sfn "${skill%/}" "$SKILLS_DIR/$name"
     wanted="$wanted$name"$'\n'
     linked=$((linked + 1))
+    linked_here=$((linked_here + 1))
     echo "linked: $name -> ${skill%/}"
   done
+  [[ "$linked_here" -eq 0 ]] && {
+    echo "WARN: skill を1つも link できず(パス陳腐化の疑い): $spec/$subdir" >&2
+    failed=$((failed + 1))
+  }
 done <"$MANIFEST"
 
 for entry in "$SKILLS_DIR"/*; do
@@ -108,4 +121,7 @@ for entry in "$SKILLS_DIR"/*; do
 done
 
 echo
-echo "skills:sync 完了 — linked=$linked pruned=$pruned (skills dir: $SKILLS_DIR)"
+echo "skills:sync 完了 — linked=$linked pruned=$pruned failed=$failed (skills dir: $SKILLS_DIR)"
+
+[[ "$failed" -gt 0 ]] && exit 1
+exit 0
