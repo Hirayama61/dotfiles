@@ -16,6 +16,8 @@ alias ls='eza --group-directories-first --icons=auto'
 alias ll='eza -l  --group-directories-first --icons=auto --git --no-user'
 alias la='eza -la --group-directories-first --icons=auto --git'
 alias lt='eza --tree --level=2 --group-directories-first --icons=auto'
+alias grep='rg'
+alias find='fd'
 # eza / fzf の配色は共有 Panda パレット由来(chezmoi テンプレートで展開)
 source ~/.config/zsh/colors.zsh
 

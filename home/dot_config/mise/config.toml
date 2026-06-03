@@ -13,6 +13,8 @@ starship = "latest"
 ghq = "latest"
 "github:d-kuro/gwq" = "latest"  # git worktree マネージャ。ghq と対で並行作業用 worktree を管理(release のプレビルド取得)
 eza = "latest"          # ls 代替(Panda 配色は zshrc の EZA_COLORS)
+ripgrep = "latest"      # Neovim Telescope live_grep の必須依存。grep 代替も兼ねる
+fd = "latest"           # Neovim Telescope find_files 高速化(無いと find fallback で低速)
 node = "lts"
 "npm:@antfu/ni" = "latest"
 rust = { version = "latest", components = "rust-analyzer" }
