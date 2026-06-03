@@ -141,3 +141,18 @@ bind e if -F '#{==:#{session_name},popup}' \
   { detach-client } \
   { popup -w90% -h90% -d '#{pane_current_path}' -E \
     'tmux new-session -A -s popup -c "#{pane_current_path}"' }
+
+# ============================
+# 操作チートシート(prefix + ?)
+# ============================
+
+# nvim の <leader>? と対の自前ヘルプ。tmux 標準の ? = list-keys を置換する。
+# 中身は ~/.config/tmux/cheatsheet.sh(キュレーション静的・panda 追従・q/Esc で閉じる)。
+# サイズは中身の実寸(玄人テクは毎回ランダム3件で高さ31行固定、幅は最大95cols)
+# +ボーダー分に合わせた固定値。DATA を大きく増減したらこの -w/-h も合わせる。
+bind ? display-popup -E -w 98 -h 34 \
+  -b rounded \
+  -S 'fg={{ .panda.cyan.hex }}' \
+  -s 'bg={{ .panda.bg.hex }}' \
+  -T ' tmux Cheatsheet ' \
+  '~/.config/tmux/cheatsheet.sh'
