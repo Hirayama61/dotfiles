@@ -111,14 +111,22 @@ while IFS= read -r line; do
   }
 done <"$MANIFEST"
 
-for entry in "$SKILLS_DIR"/*; do
-  [[ -L "$entry" ]] || continue
-  name="$(basename "$entry")"
-  grep -qxF "$name" <<<"$wanted" && continue
-  rm -f "$entry"
-  pruned=$((pruned + 1))
-  echo "pruned: $name"
-done
+# 同期失敗(failed>0)があると wanted が不完全=本来 link されるべき skill が
+# 欠けている。この状態で prune すると、陳腐化したパスの skill を「不要」と誤認して
+# 既存 symlink を破壊する。失敗時は prune を丸ごと抑止し、manifest 修正後の再実行に
+# 委ねる(sync.sh の空 managed ガードと同型の破壊防止)。
+if [[ "$failed" -gt 0 ]]; then
+  echo "WARN: 同期失敗あり。symlink 破壊を避けるため prune を抑止しました(この実行では退役させた skill の削除反映も保留)。manifest を修正して再実行してください。" >&2
+else
+  for entry in "$SKILLS_DIR"/*; do
+    [[ -L "$entry" ]] || continue
+    name="$(basename "$entry")"
+    grep -qxF "$name" <<<"$wanted" && continue
+    rm -f "$entry"
+    pruned=$((pruned + 1))
+    echo "pruned: $name"
+  done
+fi
 
 echo
 echo "skills:sync 完了 — linked=$linked pruned=$pruned failed=$failed (skills dir: $SKILLS_DIR)"
