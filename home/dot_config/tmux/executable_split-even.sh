@@ -5,13 +5,18 @@
 #
 # 使い方: split-even.sh h   (フル高の列バンドを追加 / 列を均等幅)
 #         split-even.sh v   (フル幅の行バンドを追加 / 行を均等高)
+#
+# 任意の第2引数 [path]: 新バンドはそこに cd する(既存ディレクトリの時のみ採用、
+# 不在ならアクティブペインの current path に黙ってフォールバック)。既定はアクティブ
+# ペインの current path。cc-dotfiles の open-worktree skill が「path を均等バンドで
+# 開く」単一情報源としてこの分岐を再利用する。
 
 set -eu
 
 dir="${1:-}"
 case "$dir" in
   h|v) ;;
-  *) echo "usage: split-even.sh h|v" >&2; exit 2 ;;
+  *) echo "usage: split-even.sh h|v [path]" >&2; exit 2 ;;
 esac
 
 # 分割元アクティブペインの実パスを解決する。
@@ -19,11 +24,17 @@ esac
 src_pane=$(tmux display-message -p '#{pane_id}')
 src_path=$(tmux display-message -p -t "$src_pane" '#{pane_current_path}')
 
+# 新バンドの cd 先。$2 が実在ディレクトリならそれ、不在/未指定なら src_path。
+target_path="$src_path"
+if [ -n "${2:-}" ] && [ -d "$2" ]; then
+  target_path="$2"
+fi
+
 # -f: ウィンドウ全幅/全高のフルバンドを追加(アクティブペインの sub 分割に閉じない)。
 if [ "$dir" = h ]; then
-  tmux split-window -fh -c "$src_path" -t "$src_pane"
+  tmux split-window -fh -c "$target_path" -t "$src_pane"
 else
-  tmux split-window -fv -c "$src_path" -t "$src_pane"
+  tmux split-window -fv -c "$target_path" -t "$src_pane"
 fi
 
 # 全ペインをトップレベルのバンドにグルーピングして均等化する。
