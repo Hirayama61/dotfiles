@@ -8,4 +8,4 @@
 kepano/obsidian-skills/skills/obsidian-markdown        # MIT. OFM 記法(wikilink/callout/properties)。これだけ単体取得
 kepano/obsidian-skills/skills/defuddle                 # MIT. HTML→Markdown 抽出。bases/canvas/cli は取り込まない
 mattpocock/skills/skills/engineering/grill-with-docs   # MIT. カテゴリ階層ネストの monorepo から 1 skill だけ単体 symlink
-mizchi/skills/empirical-prompt-tuning                  # MIT(リポ既定). ルート直下に並ぶ monorepo から 1 skill だけ単体 symlink
+mizchi/skills/meta/empirical-prompt-tuning             # MIT(リポ既定). カテゴリ階層化された monorepo の meta/ 配下から 1 skill だけ単体 symlink
