@@ -1,0 +1,193 @@
+#!/usr/bin/env bash
+# tmux 操作チートシート — prefix + ? で display-popup から起動する。
+#
+# nvim 側の <leader>? → cheatsheet.lua と対になる存在。表示内容は list-keys から
+# 自動生成せず、カテゴリ別にキュレーションした静的データ(下の DATA)を持つ。
+# 理由は外部脳 Decisions/dotfiles/2026-06-03-tmuxチートシートヘルプダイアログの設計 参照。
+#
+# 段組みは perl が担う: macOS の awk/bash は日本語の表示幅をバイト数で誤るため
+# (実測: awk length("あ")=3)、UTF-8 を正しく扱える perl で幅計算する。固定 2 カラム
+# で、端末幅追従(レスポンシブ)はしない。色は panda パレット(.chezmoidata.yaml)を
+# truecolor ANSI で展開(colors.zsh.tmpl と同じ単一ソース)。
+#
+# DATA 記法(編集はここだけ直せばレイアウトは自動追従):
+#   @ ...        上部に出す全幅ノート(prefix の使い方など)
+#   # タイトル    カテゴリ見出し(末尾に *N で「プールから N 件ランダム抽出」)
+#   key<TAB>説明  項目(key と説明は TAB 区切り。TAB は複数でも可)
+#   % ...        下部に出す全幅フッタ(閉じ方など)
+
+perl -e '
+use strict;
+binmode(STDIN,  ":encoding(UTF-8)");
+binmode(STDOUT, ":encoding(UTF-8)");
+
+my $HEAD = "\e[1;38;2;{{ .panda.mint.rgb }}m";
+my $KEY  = "\e[38;2;{{ .panda.cyan.rgb }}m";
+my $DESC = "\e[38;2;{{ .panda.fg.rgb }}m";
+my $NOTE = "\e[38;2;{{ .panda.subtle.rgb }}m";
+my $R    = "\e[0m";
+my $GUTTER = 4;
+
+sub vw {
+  my ($s) = @_;
+  $s =~ s/\e\[[0-9;]*m//g;
+  my $w = 0;
+  for my $c (split //, $s) {
+    my $o = ord $c;
+    $w += ( ($o>=0x1100 && $o<=0x115F) || ($o>=0x2E80 && $o<=0xA4CF) ||
+            ($o>=0xAC00 && $o<=0xD7A3) || ($o>=0xF900 && $o<=0xFAFF) ||
+            ($o>=0xFE30 && $o<=0xFE4F) || ($o>=0xFF00 && $o<=0xFF60) ||
+            ($o>=0xFFE0 && $o<=0xFFE6) ) ? 2 : 1;
+  }
+  return $w;
+}
+
+my (@blocks, @notes, @foot, $cur);
+while (my $line = <STDIN>) {
+  $line =~ s/\r?\n$//;
+  next if $line =~ /^\s*$/;
+  if    ($line =~ /^\@\s?(.*)$/) { push @notes, $1; next; }
+  elsif ($line =~ /^%\s?(.*)$/)  { push @foot,  $1; next; }
+  elsif ($line =~ /^#\s?(.*)$/)  {
+    my ($t, $pick) = ($1, 0);
+    if ($t =~ /^(.*?)\s*\*(\d+)\s*$/) { ($t, $pick) = ($1, $2); }
+    $cur = { title => $t, items => [], pick => $pick };
+    push @blocks, $cur; next;
+  }
+  my ($k, $d) = split /\t+/, $line, 2;
+  next unless defined $k;
+  $d = "" unless defined $d;
+  $k =~ s/^\s+//; $k =~ s/\s+$//;
+  push @{$cur->{items}}, [$k, $d] if $cur;
+}
+
+# *N 指定ブロックは毎起動でプールから N 件ランダム抽出(NORANDOM=1 で全件=幅計測用)。
+unless ($ENV{NORANDOM}) {
+  for my $b (@blocks) {
+    next unless $b->{pick} && @{$b->{items}} > $b->{pick};
+    my @it = @{$b->{items}};
+    for (my $i = $#it; $i > 0; $i--) { my $j = int(rand($i + 1)); @it[$i, $j] = @it[$j, $i]; }
+    @{$b->{items}} = @it[0 .. $b->{pick} - 1];
+  }
+}
+
+my @rendered;
+for my $b (@blocks) {
+  my $kw = 0;
+  for my $it (@{$b->{items}}) { my $w = vw($it->[0]); $kw = $w if $w > $kw; }
+  my @lines = ($HEAD . $b->{title} . $R);
+  for my $it (@{$b->{items}}) {
+    my ($k, $d) = @$it;
+    my $pad = $kw - vw($k); $pad = 0 if $pad < 0;
+    push @lines, "  " . $KEY . $k . $R . (" " x $pad) . "  " . $DESC . $d . $R;
+  }
+  push @rendered, \@lines;
+}
+
+my @bh = map { scalar(@$_) + 1 } @rendered;
+my $total = 0; $total += $_ for @bh;
+my ($best, $split, $run) = (1e9, scalar(@rendered), 0);
+for my $k (0 .. $#rendered) {
+  $run += $bh[$k];
+  my $diff = abs($run - ($total - $run));
+  if ($diff < $best) { $best = $diff; $split = $k + 1; }
+}
+my @colA = @rendered[0 .. $split - 1];
+my @colB = $split <= $#rendered ? @rendered[$split .. $#rendered] : ();
+
+sub flat { my @o; for my $b (@_) { push @o, @$b, ""; } pop @o while @o && $o[-1] eq ""; return @o; }
+my @la = flat(@colA);
+my @lb = flat(@colB);
+
+my $cw = 0; for (@la) { my $w = vw($_); $cw = $w if $w > $cw; }
+my $rows = @la > @lb ? @la : @lb;
+
+my @out;
+push @out, $NOTE . $_ . $R for @notes;
+push @out, "" if @notes;
+for my $i (0 .. $rows - 1) {
+  my $L = defined $la[$i] ? $la[$i] : "";
+  my $Rt = defined $lb[$i] ? $lb[$i] : "";
+  my $pad = $cw - vw($L); $pad = 0 if $pad < 0;
+  my $row = $L . (" " x ($pad + $GUTTER)) . $Rt;
+  $row =~ s/[ ]+$//;
+  push @out, $row;
+}
+if (@foot) { push @out, ""; push @out, $NOTE . $_ . $R for @foot; }
+print join("\n", @out), "\n";
+' <<'DATA'
+@ prefix = C-q を押してから各キー(コピーモード中は prefix 不要)
+@ : で始まる項目は prefix + : のコマンドプロンプトで実行
+
+# 基本
+?	このチートシートを表示
+r	設定をリロード
+:	コマンドプロンプト
+d	デタッチ(セッションは残る)
+t	時計を表示
+
+# ウィンドウ
+c	新規ウィンドウ(現在パス維持)
+n / p	次 / 前のウィンドウ
+w	ウィンドウを一覧選択
+,	ウィンドウ名を変更
+&	ウィンドウを閉じる(確認)
+
+# ペイン分割
+|	左右に分割(パス維持)
+-	下に均等な行を追加
+_	素の上下分割(稀ケース用)
+
+# ペイン操作
+h j k l	左 下 上 右 のペインへ
+H J K L	連打でリサイズ(押し直し不要)
+z	ズーム(一時最大化)トグル
+x	ペインを閉じる(確認)
+{ / }	ペインを前 / 後ろへ入替
+!	ペインを新ウィンドウへ分離
+
+# コピーモード (vi)
+[	コピーモード開始
+v / V	文字 / 行 を選択
+C-v	矩形選択
+y	pbcopy へコピーして終了
+/ ?	前方 / 後方検索
+n / N	次 / 前のマッチ
+g / G	先頭 / 末尾へ
+q	コピーモード終了
+
+# popup ツール
+g	tig をポップアップ(差分・コミット)
+e	永続シェル(同キーで開閉・状態復帰)
+
+# セッション
+s	セッションを一覧選択
+$	セッション名を変更
+( / )	前 / 次のセッション
+D	クライアントを選んでデタッチ
+
+# 玄人テク *3
+同時入力	:setw synchronize-panes(全ペインへ一斉)
+番号移動	q → 数字でペインへ即ジャンプ
+整列	Space で巡回 / M-1〜5 でプリセット
+回転	C-o でペイン回転(逆は M-o)
+合流	:join-pane -s :2 で別窓のペインを取込
+保存	:capture-pane -S - ; save-buffer ~/o.txt
+履歴貼付	= でコピー履歴から選んで貼付
+直前へ	L で直前のセッションへ即戻り
+窓検索	f でウィンドウを名前で検索
+メニュー	< 窓 / > ペインの操作メニュー
+マーク	m でマーク → :swap-pane で入替
+再起動	:respawn-pane -k でコマンド再起動
+番号詰め	:move-window -r でウィンドウ番号整理
+出力記録	:pipe-pane -o 'cat>>~/p.log'
+リサイズ	:resize-pane -x 100 -y 30
+
+% q / Esc で閉じる
+DATA
+
+# popup は静的表示なのでナビ不要。q / Esc のみで閉じる(nvim cheatsheet 踏襲)。
+# perl の stdin は heredoc。ここでの read は popup の tty を読む。
+while IFS= read -rsn1 _key; do
+  [[ $_key == q || $_key == $'\e' ]] && break
+done
