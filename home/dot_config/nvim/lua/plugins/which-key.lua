@@ -26,6 +26,7 @@ return {
       { "<leader>s", group = "分割", mode = "n" },
       { "<leader>f", group = "検索", mode = "n" },
       { "<leader>r", group = "リネーム/LSP", mode = "n" },
+      { "<leader>t", group = "トグル", mode = "n" },
     })
   end,
 }

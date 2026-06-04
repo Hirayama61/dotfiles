@@ -122,6 +122,7 @@ M.categories = {
       { "<leader>o / O", "下 / 上に空行を挿入" },
       { "<leader>cp / cr / cf", "絶対 / 相対 / ファイル名 パスをコピー" },
       { "<leader>ff / fg", "ファイル検索 / 文字列検索(telescope)" },
+      { "<leader>tm", "Markdown レンダリング表示トグル(md バッファ)" },
       { "<leader>?", "このチートシートを開く" },
       { "<C-a>", "全選択" },
       { "-", "親ディレクトリを開く(oil)" },
