@@ -11,7 +11,7 @@
 -- 導入するパーサ集合(同梱済みのものも列挙してよい。main が最新版を入れ直す)。
 local parsers = {
   "lua", "vim", "vimdoc", "query", "bash",
-  "json", "jsonc", "yaml", "toml",
+  "json", "yaml", "toml",
   "markdown", "markdown_inline",
   "typescript", "tsx", "javascript", "css", "html",
 }

@@ -9,6 +9,7 @@ gh = "latest"
 fzf = "latest"
 tmux = "latest"
 neovim = "latest"
+tree-sitter = "latest"  # nvim-treesitter(main)が install() でパーサを `tree-sitter build` する際に必須。未導入だと build が ENOENT で失敗し、ハイライトが同梱パーサ(markdown/lua 等)のみに縮退する
 starship = "latest"
 ghq = "latest"
 "github:d-kuro/gwq" = "latest"  # git worktree マネージャ。ghq と対で並行作業用 worktree を管理(release のプレビルド取得)
