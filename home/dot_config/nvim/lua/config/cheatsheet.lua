@@ -149,6 +149,19 @@ M.categories = {
       { "g.", "隠しファイル表示トグル" },
     },
   },
+  {
+    title = "GitHub(octo)",
+    note = "gh CLI 前提。<localleader> 系は octo バッファ内のみ",
+    items = {
+      { "<leader>gp", "PR 一覧(:Octo pr list)" },
+      { ":Octo pr diff", "PR の diff を確認" },
+      { ":Octo pr checkout", "PR ブランチを checkout" },
+      { ":Octo review", "レビュー開始 → 行コメント追加" },
+      { ":Octo", "コマンド一覧 picker を開く" },
+      { "<localleader>ca", "コメント追加(レビュー中)" },
+      { "<localleader>cr", "コメント返信" },
+    },
+  },
 }
 
 local HL_TITLE = "CheatsheetTitle"

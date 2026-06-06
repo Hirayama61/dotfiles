@@ -27,6 +27,7 @@ return {
       { "<leader>f", group = "検索", mode = "n" },
       { "<leader>r", group = "リネーム/LSP", mode = "n" },
       { "<leader>t", group = "トグル", mode = "n" },
+      { "<leader>g", group = "GitHub", mode = "n" },
     })
   end,
 }
