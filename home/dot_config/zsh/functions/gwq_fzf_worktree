@@ -10,8 +10,10 @@
 # 逆に激遅になる(=今回直したい遅さの再来)。worktree root を見つけたらその中へは降りない。
 #
 # 表示は branch 先頭 + repo 後置で同一リポの複数 worktree を識別(フルパスだと小画面で末尾
-# branch が切れる + 同一リポ同名 branch が repo 違いで衝突しうる)。フルパスは tab 区切りの
-# 隠しフィールドにして cd/preview に使う。
+# branch が切れる + 同一リポ同名 branch が repo 違いで衝突しうる)。branch を最大幅で右パディング
+# して ⟨repo⟩ 列の左端を揃え、縦軸を一致させる(認知負荷低減のため列挙は 2 パス: 先に最大幅を測る)。
+# フルパスは tab 区切りの隠しフィールドにして cd/preview に使う。preview の git log は graph を
+# 外し tig 風に「相対日付 / author / 件名」を固定幅で整列する。
 
 emulate -L zsh
 
@@ -33,17 +35,27 @@ while (( ${#pending} )); do
 done
 (( ${#leaves} )) || { zle reset-prompt; return }
 
-local p rel repo branch sel
+local p rel repo branch sel b
+local -i maxb=0 i
+local -a branches=() repos=() paths=()
+for p in $leaves; do
+  rel=${p#$base/}
+  local -a parts=( "${(@s:/:)rel}" )
+  repo=$parts[3]
+  branch=${(j:/:)parts[4,-1]}
+  branches+=( "$branch" )
+  repos+=( "$repo" )
+  paths+=( "$p" )
+  (( ${#branch} > maxb )) && maxb=${#branch}
+done
+
 sel=$(
-  for p in $leaves; do
-    rel=${p#$base/}
-    local -a parts=( "${(@s:/:)rel}" )
-    repo=$parts[3]
-    branch=${(j:/:)parts[4,-1]}
-    printf '%s\t%s\n' "$branch  ⟨$repo⟩" "$p"
+  for (( i = 1; i <= ${#branches}; i++ )); do
+    b=$branches[i]
+    printf '%s  ⟨%s⟩\t%s\n' "${(r:maxb:)b}" "$repos[i]" "$paths[i]"
   done | fzf --height 40% --layout=reverse --border \
     --delimiter='\t' --with-nth=1 --nth=1 \
-    --preview 'git -C {2} log --oneline --graph --decorate -n 20 --color=always 2>/dev/null; echo; git -C {2} -c color.status=always status -sb 2>/dev/null'
+    --preview 'git -C {2} log -n 20 --color=always --date=relative --pretty=format:"%C(green)%<(14,trunc)%ad%C(reset) %C(cyan)%<(14,trunc)%an%C(reset) %s" 2>/dev/null; echo; echo; git -C {2} -c color.status=always status -sb 2>/dev/null'
 )
 
 if [[ -n "$sel" ]]; then
