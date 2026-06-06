@@ -7,9 +7,8 @@
 #         split-even.sh v   (フル幅の行バンドを追加 / 行を均等高)
 #
 # 任意の第2引数 [path]: 新バンドはそこに cd する(既存ディレクトリの時のみ採用、
-# 不在ならアクティブペインの current path に黙ってフォールバック)。既定はアクティブ
-# ペインの current path。cc-dotfiles の open-worktree skill が「path を均等バンドで
-# 開く」単一情報源としてこの分岐を再利用する。
+# 不在ならアクティブペインの current path に黙ってフォールバック)。既定(引数なし =
+# prefix - 等)はアクティブペインの current path に均等バンドを開く。
 
 set -eu
 
