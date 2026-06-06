@@ -8,7 +8,10 @@ repo=$(ghq list | fzf --height 40% --layout=reverse --border \
              || ls -la $(ghq root)/{}')
 
 if [[ -n "$repo" ]]; then
-  BUFFER="cd $(ghq root)/$repo"
+  # accept-line が BUFFER を再パースするので、パス全体を (q) でクォートする
+  # (repo 名や ghq root にメタ文字/空白が混ざっても意図せぬ実行にならないように。gwq_fzf_worktree と統一)。
+  local dest="$(ghq root)/$repo"
+  BUFFER="cd -- ${(q)dest}"
   zle accept-line
 else
   zle reset-prompt
