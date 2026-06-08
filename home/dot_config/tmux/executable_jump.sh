@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 # tmux popup から worktree / ghq repo を fzf で選び、新 window(Enter)か pane 横分割(C-s)で開く。
-# bindkey: prefix+W (worktree) / prefix+O (repo)。
+# tmux bind: prefix+T (worktree) / prefix+G (repo)。
 #
 # 旧 zsh ZLE widget(ghq_fzf_repo=^g^g / gwq_fzf_worktree=^g^w)を tmux に一本化したもの。
 # ZLE widget はシェルのプロンプト上でしか動かないが、tmux prefix は TUI(Claude Code 等)
