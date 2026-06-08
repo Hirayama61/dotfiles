@@ -71,7 +71,7 @@ fi
 # --- fzf: Enter=window / C-s=pane(--expect で押下キーを 1 行目に返す)---
 local out key sel target
 out=$(
-  print -rl -- $lines | fzf \
+  print -rl -- $lines | fzf --layout=reverse \
     --delimiter='\t' --with-nth=1 --nth=1 \
     --expect=ctrl-s \
     --header='enter=window   C-s=pane' \
