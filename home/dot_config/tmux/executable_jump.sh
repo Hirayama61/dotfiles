@@ -55,11 +55,14 @@ else
   [[ -n $listing ]] || { tmux display-message "ghq リポジトリが見つかりません"; exit 1 }
   local -a roots=( ${(f)"$(ghq root --all 2>/dev/null)"} )
   (( ${#roots} )) || roots=( "$(ghq root)" )
-  local p r rel e group repo prev=""
+  local p r rel e group repo prev="" best
   local -a entries=()
   for p in ${(f)listing}; do
+    # 最長一致の root を剥がす(ネストした root /a と /a/b で短い方を剥がすと rel が崩れるため)。
+    best=""
+    for r in $roots; do [[ $p == $r/* && ${#r} -gt ${#best} ]] && best=$r; done
     rel=$p
-    for r in $roots; do [[ $p == $r/* ]] && { rel=${p#$r/}; break }; done
+    [[ -n $best ]] && rel=${p#$best/}
     entries+=( "$rel"$'\t'"$p" )
   done
   # 相対パスでソートして同一 owner を隣接させ、host/owner 見出しを 1 回だけ出して repo をインデント表示する。
