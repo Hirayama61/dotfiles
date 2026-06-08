@@ -93,7 +93,7 @@ done
 if [[ $mode == worktree ]]; then
   preview='[ -n {3} ] || exit 0; git -C {3} log -n 20 --color=always --date=relative --pretty=format:"%C(green)%<(14,trunc)%ad%C(reset) %C(cyan)%<(14,trunc)%an%C(reset) %s" 2>/dev/null; echo; echo; git -C {3} -c color.status=always status -sb 2>/dev/null'
 else
-  preview='[ -n {3} ] || exit 0; bat --color=always --style=header,grid --line-range :80 {3}/README.md 2>/dev/null || eza --icons --tree --level=2 {3} 2>/dev/null || ls -la {3}'
+  preview='[ -n {3} ] || exit 0; bat --color=always --style=header,grid --line-range :80 {3}/README.md 2>/dev/null && echo; eza --icons --color=always --tree --level=2 {3} 2>/dev/null || ls -la {3}'
 fi
 
 # --- fzf: Enter=window / C-s=pane。表示=色付き(--ansi)・検索=2 列目・UI 配色=Panda ---
