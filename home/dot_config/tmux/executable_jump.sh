@@ -48,15 +48,36 @@ if [[ $mode == worktree ]]; then
     lines+=( "${(mr:$maxb:)b}  ⟨$repos[i]⟩"$'\t'"$paths[i]" )
   done
 else
-  # ghq list -p で絶対パスを得る(ghq.root が複数でも正しい。$(ghq root)/$repo の先頭 root 決め打ちは誤パスを生む)。
+  # ghq list -p の絶対パスから ghq root を剥がし、相対パス(host/owner/repo 等)で扱う。
+  # parts 決め打ちだと root 直下(local/repo)で ghq の dir 名が見出しに混ざるため root prefix を剥がす。複数 root 対応。
   local listing
   listing=$(ghq list -p) || { tmux display-message "ghq list に失敗しました"; exit 1 }
   [[ -n $listing ]] || { tmux display-message "ghq リポジトリが見つかりません"; exit 1 }
-  local p
-  local -a parts
+  local -a roots=( ${(f)"$(ghq root --all 2>/dev/null)"} )
+  (( ${#roots} )) || roots=( "$(ghq root)" )
+  local p r rel e group repo prev=""
+  local -a entries=()
   for p in ${(f)listing}; do
-    parts=( "${(@s:/:)p}" )
-    lines+=( "${(j:/:)parts[-3,-1]}"$'\t'"$p" )   # 表示は host/owner/repo
+    rel=$p
+    for r in $roots; do [[ $p == $r/* ]] && { rel=${p#$r/}; break }; done
+    entries+=( "$rel"$'\t'"$p" )
+  done
+  # 相対パスでソートして同一 owner を隣接させ、host/owner 見出しを 1 回だけ出して repo をインデント表示する。
+  # 見出し行は fzf で選択不可にできないため隠し path(2 列目)を空にして選択時 no-op にする(後段 target 空 → 何もしない)。
+  for e in ${(o)entries}; do
+    rel=${e%%$'\t'*}; p=${e#*$'\t'}
+    if [[ $rel != */* ]]; then
+      lines+=( "$rel"$'\t'"$p" )      # root 直下(親なし)repo は見出しを出さずそのまま
+      prev=""
+      continue
+    fi
+    group=${rel%/*}
+    repo=${rel##*/}
+    if [[ $group != $prev ]]; then
+      lines+=( "$group/"$'\t' )       # 見出し(path 空 → no-op)
+      prev=$group
+    fi
+    lines+=( "  $repo"$'\t'"$p" )
   done
 fi
 
