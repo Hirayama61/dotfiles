@@ -1,0 +1,118 @@
+#!/usr/bin/env zsh
+# tmux popup から worktree / ghq repo を fzf で選び、新 window(Enter)か pane 横分割(C-s)で開く。
+# tmux bind: prefix+T (worktree) / prefix+G (repo)。
+#
+# 旧 zsh ZLE widget(^g^g / ^g^w)を tmux に一本化したもの。ZLE はシェルのプロンプト専用だが
+# tmux prefix は TUI(Claude Code 等)実行中でも効くので、どの画面からでも呼べる(これが寄せた理由)。
+#
+# popup はあくまで finder の見た目。選択した瞬間に popup は閉じ(display-popup -E)実体の
+# window/pane を開く(tmux popup は window/pane に昇格できないため)。
+#
+# 表示は host/owner(/repo)でグループ化した tree。見出し(pink)を 1 回だけ出し、配下を ├─/└─ で
+# ぶら下げる。見出し行は fzf で選択不可にできないため、隠しフィールド(search/path)を空にして
+# 選択時 no-op にする(後段 target 空 → 何もしない)。
+#
+# 各行 = "色付き表示<TAB>検索文字列<TAB>絶対パス"。--with-nth=1 で表示・--nth=2 で検索(group も
+# leaf も拾えるよう search に両方入れる)・{3}/target に path。色は Panda(chezmoi 展開。.tmpl 必須)。
+
+emulate -L zsh
+set -o pipefail
+
+local mode=$1
+[[ $mode == worktree || $mode == repo ]] || { print -u2 "usage: jump.sh worktree|repo"; exit 1 }
+# popup は FZF_DEFAULT_OPTS 同様 PATH も継がない場合がある。fzf 不在を早期に知らせる(無言終了を防ぐ)。
+command -v fzf >/dev/null 2>&1 || { tmux display-message "jump.sh: fzf が見つかりません(popup の PATH を確認)"; exit 1 }
+
+# 宣言は 1 回に集約する。このスクリプトは関数でなくトップレベル実行のため、`local` で同名変数を
+# 再宣言すると既存値を `name=value` で表示してしまう(zsh 仕様)。以降は代入のみにする。
+local R C_HEAD C_TREE C_LEAF base d p r rel best g lf e leaf pth rest ng prev conn search preview out key sel target listing
+local -a entries lines leaves pending parts roots sorted
+local -i i n
+
+# Panda 配色(colors.zsh.tmpl と同パレット。popup は FZF_DEFAULT_OPTS を継がない場合があるので明示する)。
+R=$'\e[0m'
+C_HEAD=$'\e[1;38;2;{{ .panda.pink.rgb }}m'
+C_TREE=$'\e[38;2;{{ .panda.subtle.rgb }}m'
+[[ $mode == worktree ]] && C_LEAF=$'\e[38;2;{{ .panda.mint.rgb }}m' || C_LEAF=$'\e[38;2;{{ .panda.cyan.rgb }}m'
+
+# --- 候補生成: entries に "group<TAB>leaf<TAB>path" を積む ---
+if [[ $mode == worktree ]]; then
+  # ~/worktrees の生 FS を BFS。.git を持つ dir = worktree root で降下を止める(node_modules 等を走査しない)。
+  base=$HOME/worktrees
+  pending=( $base/*/*/*(/N) )
+  while (( ${#pending} )); do
+    d=$pending[1]; shift pending
+    if [[ -e $d/.git ]]; then leaves+=( $d ); else pending+=( $d/*(/N) ); fi
+  done
+  (( ${#leaves} )) || { tmux display-message "worktree が見つかりません ($base)"; exit 0 }
+  for p in $leaves; do
+    rel=${p#$base/}
+    parts=( "${(@s:/:)rel}" )
+    entries+=( "${(j:/:)parts[1,3]}"$'\t'"${(j:/:)parts[4,-1]}"$'\t'"$p" )   # group=host/owner/repo, leaf=branch
+  done
+else
+  # ghq list -p の絶対パスから ghq root(最長一致)を剥がし、相対パスの親ディレクトリでグループ化(通常 host/owner、gitlab subgroup 等は深くなる)。複数 root 対応。
+  listing=$(ghq list -p) || { tmux display-message "ghq list に失敗しました"; exit 1 }
+  [[ -n $listing ]] || { tmux display-message "ghq リポジトリが見つかりません"; exit 1 }
+  roots=( ${(f)"$(ghq root --all 2>/dev/null)"} )
+  (( ${#roots} )) || roots=( "$(ghq root)" )
+  for p in ${(f)listing}; do
+    best=""
+    for r in $roots; do [[ $p == $r/* && ${#r} -gt ${#best} ]] && best=$r; done
+    rel=$p
+    [[ -n $best ]] && rel=${p#$best/}
+    g=${rel%/*}; lf=${rel##*/}
+    [[ $g == $rel ]] && g=""        # slash 無し(root 直下 repo)は親なし
+    entries+=( "$g"$'\t'"$lf"$'\t'"$p" )
+  done
+fi
+
+# --- tree 描画: group ごとに見出し 1 回 + 配下を ├─/└─ でぶら下げ(末尾だけ └─)---
+sorted=( ${(o)entries} )
+n=${#sorted}
+prev=""
+for (( i = 1; i <= n; i++ )); do
+  e=$sorted[i]
+  g=${e%%$'\t'*}; rest=${e#*$'\t'}; leaf=${rest%%$'\t'*}; pth=${rest#*$'\t'}
+  search="${g:+$g/}$leaf"
+  if [[ -z $g ]]; then
+    lines+=( "${C_LEAF}${leaf}${R}"$'\t'"$search"$'\t'"$pth" )   # 親なし repo は flush
+    prev=""
+    continue
+  fi
+  if [[ $g != $prev ]]; then
+    lines+=( "${C_HEAD}${g}${R}"$'\t'$'\t' )                     # 見出し(search/path 空 → no-op)
+    prev=$g
+  fi
+  ng=""; (( i < n )) && ng=${sorted[i+1]%%$'\t'*}
+  [[ $ng == $g ]] && conn="├─" || conn="└─"
+  lines+=( "${C_TREE}${conn}${R} ${C_LEAF}${leaf}${R}"$'\t'"$search"$'\t'"$pth" )
+done
+
+# --- preview({3}=path は fzf が単引用符化済)。見出し行は {3} 空なので preview を即終了し空走査を避ける ---
+if [[ $mode == worktree ]]; then
+  preview='[ -n {3} ] || exit 0; git -C {3} log -n 20 --color=always --date=relative --pretty=format:"%C(green)%<(14,trunc)%ad%C(reset) %C(cyan)%<(14,trunc)%an%C(reset) %s" 2>/dev/null; echo; echo; git -C {3} -c color.status=always status -sb 2>/dev/null'
+else
+  preview='[ -n {3} ] || exit 0; bat --color=always --style=header,grid --line-range :80 {3}/README.md 2>/dev/null || eza --icons --tree --level=2 {3} 2>/dev/null || ls -la {3}'
+fi
+
+# --- fzf: Enter=window / C-s=pane。表示=色付き(--ansi)・検索=2 列目・UI 配色=Panda ---
+out=$(
+  print -rl -- $lines | fzf --layout=reverse --ansi \
+    --delimiter='\t' --with-nth=1 --nth=2 \
+    --color='fg:{{ .panda.fg.hex }},bg:-1,hl:{{ .panda.cyan.hex }},fg+:{{ .panda.white.hex }},bg+:{{ .panda.selection.hex }},hl+:{{ .panda.cyan.hex }},info:{{ .panda.subtle.hex }},prompt:{{ .panda.mint.hex }},pointer:{{ .panda.pink.hex }},marker:{{ .panda.orange.hex }},spinner:{{ .panda.purple_lift.hex }},header:{{ .panda.subtle.hex }},border:{{ .panda.selection.hex }}' \
+    --expect=ctrl-s \
+    --header='enter=window   C-s=pane' \
+    --preview "$preview" --preview-window=right,60%
+) || exit 0
+[[ -n $out ]] || exit 0
+key=${out%%$'\n'*}        # "" (enter) または "ctrl-s"
+sel=${out#*$'\n'}         # 選択行(表示<TAB>search<TAB>path)
+target=${sel##*$'\t'}     # 3 列目 = 絶対パス
+[[ -n $target ]] || exit 0
+
+if [[ $key == ctrl-s ]]; then
+  tmux split-window -h -c "$target"
+else
+  tmux new-window -c "$target"
+fi
