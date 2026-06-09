@@ -1,12 +1,12 @@
 #!/usr/bin/env zsh
-# tmux popup から worktree / ghq repo を fzf で選び、新 window(Enter)か pane 横分割(C-s)で開く。
+# tmux popup から worktree / ghq repo を fzf で選び、呼び出し元 pane で cd(Enter)か新 window(C-s)で開く。
 # tmux bind: prefix+T (worktree) / prefix+G (repo)。
 #
 # 旧 zsh ZLE widget(^g^g / ^g^w)を tmux に一本化したもの。ZLE はシェルのプロンプト専用だが
 # tmux prefix は TUI(Claude Code 等)実行中でも効くので、どの画面からでも呼べる(これが寄せた理由)。
 #
-# popup はあくまで finder の見た目。選択した瞬間に popup は閉じ(display-popup -E)実体の
-# window/pane を開く(tmux popup は window/pane に昇格できないため)。
+# popup はあくまで finder の見た目。選択した瞬間に popup は閉じ(display-popup -E)、Enter は
+# 呼び出し元 pane に cd を送り、C-s は実体の新 window を開く(tmux popup は pane に昇格できないため)。
 #
 # 表示は host/owner/repo(/branch)のフルパスを 1 行 1 件のフラット列で出す。プレフィックス
 # (host/owner/repo)を淡色・末尾の leaf(repo or branch)を明色にし、sort で同一 group を隣接させる。
@@ -27,8 +27,12 @@ command -v fzf >/dev/null 2>&1 || { tmux display-message "jump.sh: fzf が見つ
 
 # 宣言は 1 回に集約する。このスクリプトは関数でなくトップレベル実行のため、`local` で同名変数を
 # 再宣言すると既存値を `name=value` で表示してしまう(zsh 仕様)。以降は代入のみにする。
-local R C_DIM C_LEAF base d p r rel best g lf e leaf pth rest disp preview out key sel target listing
+local R C_DIM C_LEAF base d p r rel best g lf e leaf pth rest disp preview out key sel target listing src_pane
 local -a entries lines leaves pending parts roots sorted
+
+# popup は pane でなく list-panes に出ない。popup 起動直後の active pane = 呼び出し元なので、
+# ここで掴んでおき Enter 時に -t で名指し cd する(後段で active が変わっても取りこぼさない)。
+src_pane=$(tmux display-message -p '#{pane_id}')
 
 # Panda 配色(colors.zsh.tmpl と同パレット。popup は FZF_DEFAULT_OPTS を継がない場合があるので明示する)。
 R=$'\e[0m'
@@ -86,13 +90,13 @@ else
   preview='[ -n {2} ] || exit 0; bat --color=always --style=header,grid --line-range :80 {2}/README.md 2>/dev/null && echo; eza --icons --color=always --tree --level=2 {2} 2>/dev/null || ls -la {2}'
 fi
 
-# --- fzf: Enter=window / C-s=pane。表示=色付き(--ansi)・検索=1 列目(色付きフルパス)・UI 配色=Panda ---
+# --- fzf: Enter=呼び出し元 pane で cd / C-s=新 window。表示=色付き(--ansi)・検索=1 列目(色付きフルパス)・UI 配色=Panda ---
 out=$(
   print -rl -- $lines | fzf --layout=reverse --ansi \
     --delimiter='\t' --with-nth=1 --nth=1 \
     --color='fg:{{ .panda.fg.hex }},bg:-1,hl:{{ .panda.cyan.hex }},fg+:{{ .panda.white.hex }},bg+:{{ .panda.selection.hex }},hl+:{{ .panda.cyan.hex }},info:{{ .panda.subtle.hex }},prompt:{{ .panda.mint.hex }},pointer:{{ .panda.pink.hex }},marker:{{ .panda.orange.hex }},spinner:{{ .panda.purple_lift.hex }},header:{{ .panda.subtle.hex }},border:{{ .panda.selection.hex }}' \
     --expect=ctrl-s \
-    --header='enter=window   C-s=pane' \
+    --header='enter=この pane へ cd   C-s=新規 window' \
     --preview "$preview" --preview-window=right,60%
 ) || exit 0
 [[ -n $out ]] || exit 0
@@ -102,7 +106,9 @@ target=${sel##*$'\t'}     # 末尾列 = 絶対パス
 [[ -n $target ]] || exit 0
 
 if [[ $key == ctrl-s ]]; then
-  tmux split-window -h -c "$target"
-else
   tmux new-window -c "$target"
+else
+  # -c は新規 window/pane の初期 cwd 専用で実行中シェルの cwd は変えられない。呼び出し元 pane へ
+  # cd を打ち込む(プロンプト前提。space 等を含むパスは ${(q)} でクォートしてから送る)。
+  tmux send-keys -t "$src_pane" "cd ${(q)target}" Enter
 fi

@@ -135,17 +135,17 @@ setw -g window-status-current-format "#[fg={{ .panda.bg.hex }},bg={{ .panda.cyan
 # Prefix + g: tig をポップアップで起動(差分確認・コミット)
 bind g popup -w90% -h90% -d '#{pane_current_path}' -E 'tig'
 
-# Prefix + T / G: worktree / ghq repo を popup の fzf で選び、新 window(Enter)か pane 横分割(C-s)で開く。
+# Prefix + T / G: worktree / ghq repo を popup の fzf で選び、呼び出し元 pane で cd(Enter)か新 window(C-s)で開く。
 # T=workTree / G=Ghq。小文字 w(=window 一覧 choose-tree)と紛らわしい W は避けた。
 # 旧 zsh の Ctrl+G widget(^g^g / ^g^w)を tmux に一本化したもの。prefix は Claude Code 等の TUI
 # 実行中でも tmux が先に奪うので、どの画面からでも呼べる(シェルのプロンプト専用だった ZLE と違う)。
 bind T display-popup -w 90% -h 90% -b rounded \
   -S 'fg={{ .panda.cyan.hex }}' -s 'bg={{ .panda.bg.hex }}' \
-  -T ' worktree (enter=window / C-s=pane) ' \
+  -T ' worktree (enter=この pane へ cd / C-s=新規 window) ' \
   -E '~/.config/tmux/jump.sh worktree'
 bind G display-popup -w 90% -h 90% -b rounded \
   -S 'fg={{ .panda.cyan.hex }}' -s 'bg={{ .panda.bg.hex }}' \
-  -T ' ghq repo (enter=window / C-s=pane) ' \
+  -T ' ghq repo (enter=この pane へ cd / C-s=新規 window) ' \
   -E '~/.config/tmux/jump.sh repo'
 
 # Prefix + e: 永続シェル popup(トグル式)
