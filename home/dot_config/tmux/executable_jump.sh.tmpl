@@ -30,9 +30,10 @@ command -v fzf >/dev/null 2>&1 || { tmux display-message "jump.sh: fzf が見つ
 local R C_DIM C_LEAF base d p r rel best g lf e leaf pth rest disp preview out key sel target listing src_pane
 local -a entries lines leaves pending parts roots sorted
 
-# popup は pane でなく list-panes に出ない。popup 起動直後の active pane = 呼び出し元なので、
-# ここで掴んでおき Enter 時に -t で名指し cd する(後段で active が変わっても取りこぼさない)。
-src_pane=$(tmux display-message -p '#{pane_id}')
+# tmux は binding/popup 実行コマンドに呼び出し元 pane を $TMUX_PANE で渡す。これを使えば
+# display-message の既定ターゲット(実行時 active pane=別クライアント操作で変わりうる)に依存せず
+# Enter 時に -t で確実に呼び出し元へ cd を送れる。未設定の保険として display を残す。
+src_pane=${TMUX_PANE:-$(tmux display-message -p '#{pane_id}')}
 
 # Panda 配色(colors.zsh.tmpl と同パレット。popup は FZF_DEFAULT_OPTS を継がない場合があるので明示する)。
 R=$'\e[0m'
@@ -105,10 +106,13 @@ sel=${out#*$'\n'}         # 選択行(表示<TAB>path)
 target=${sel##*$'\t'}     # 末尾列 = 絶対パス
 [[ -n $target ]] || exit 0
 
+# -c は新規 window/pane の初期 cwd 専用で実行中シェルの cwd は変えられない。呼び出し元 pane が
+# シェルプロンプトのとき限定で cd を打ち込み(space 等は ${(q)} でクォート)、vim/Claude 等の TUI
+# 前面なら誤入力になるため新 window へ退避する(prefix がどの画面からでも効く性質を保つ)。
 if [[ $key == ctrl-s ]]; then
   tmux new-window -c "$target"
-else
-  # -c は新規 window/pane の初期 cwd 専用で実行中シェルの cwd は変えられない。呼び出し元 pane へ
-  # cd を打ち込む(プロンプト前提。space 等を含むパスは ${(q)} でクォートしてから送る)。
+elif [[ "$(tmux display-message -p -t "$src_pane" '#{pane_current_command}')" == (zsh|bash|fish|sh) ]]; then
   tmux send-keys -t "$src_pane" "cd ${(q)target}" Enter
+else
+  tmux new-window -c "$target"
 fi
