@@ -4,10 +4,10 @@
       "Bash(ghostty +list-fonts:*)",
       "Bash(/Applications/Ghostty.app/Contents/MacOS/ghostty +list-fonts:*)",
       "Bash(open /tmp/*.html)",
-      "Read(/Users/h61/.config/**)"
+      "Read(~/.config/**)"
     ],
     "additionalDirectories": [
-      "/Users/h61/ghq/github.com/Hirayama61/cc-dotfiles"
+      "~/ghq/github.com/Hirayama61/cc-dotfiles"
     ]
   }
 }
