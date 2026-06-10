@@ -20,12 +20,13 @@ dotfiles/                          # このリポ
 ├── bin/
 │   ├── sync.sh                    # 削除自動化付き chezmoi apply ラッパー
 │   ├── skills-sync.sh             # ext-skills.txt の外部 skill を ghq clone & symlink
-│   ├── chezmoi-source.sh          # chezmoi source パス解決(mise run diff が使用)
+│   ├── chezmoi-source.sh          # chezmoi source パス解決の単一情報源(sync.sh / mise run diff が使用)
 │   ├── macos-defaults.sh          # macOS システム設定の一括投入(mise run macos)
 │   ├── wt.sh                      # フラット worktree 作成ヘルパ(worktree 規約の正規経路)
-│   ├── lib/                       # wt.sh と WorktreeCreate hook(cc-dotfiles 側)が共有する単一情報源
-│   └── demo.sh, demo/             # README 用デモ収録スクリプトと素材
-├── .claude/                       # このリポ作業時の Claude Code プロジェクト設定(settings.json 等)
+│   ├── lib/                       # wt.sh と WorktreeCreate hook(cc-dotfiles 側)が共有するパス導出ライブラリ
+│   ├── demo.sh                    # README 用デモ収録スクリプト
+│   └── demo/                      # デモ収録の素材(claude-prompt.txt 等)
+├── .claude/                       # このリポ作業時の Claude Code プロジェクト設定(~/.claude/ のグローバル設定とは別)
 ├── ext-skills.txt                 # 外部 agent skill のマニフェスト(1 行 1 skill)
 ├── Brewfile                       # mise(bootstrap CLI) + GUI cask のみ
 ├── mise.toml                      # 全タスクの入口
