@@ -12,14 +12,28 @@ set -eu
 words_file="$HOME/.config/git/sensitive-words.txt"
 [ -f "$words_file" ] || exit 0
 
-diff=$(git diff --cached --diff-filter=ACMR 2>/dev/null || true)
+# 追加行(先頭 +)だけを照合対象にする。削除行・コンテキスト行・diff ヘッダ(+++/---/@@)
+# まで含めると、機密語を「削除する」コミットや差分ヘッダのパス名で誤ブロックする(E-H2)。
+# 末尾 CR も除去する。被検査側に CR が残ると end-anchor パターン($)が CRLF ファイルで
+# 取りこぼす(E-C2 のリスト側 strip と対称。GNU grep で顕著)。
+diff=$(git diff --cached --diff-filter=ACMR 2>/dev/null | grep '^+' | grep -v '^+++' | tr -d '\r' || true)
 [ -n "$diff" ] || exit 0
 
 found=0
 while IFS= read -r word || [ -n "$word" ]; do
+  # CRLF のリストだと末尾 CR が ERE に混ざり全パターンが無効化される(E-C2)。
+  word=${word%$'\r'}
   [[ -z "$word" || "$word" == \#* ]] && continue
 
-  matches=$(printf '%s\n' "$diff" | grep -inE "$word" || true)
+  # 不正な ERE を `|| true` で握ると grep のエラー(rc>=2)をマッチ無しと取り違え、
+  # typo パターンが沈黙スキップされる(E-C1)。rc>=2 はエラーとして fail-closed する。
+  rc=0
+  matches=$(printf '%s\n' "$diff" | grep -inE "$word") || rc=$?
+  if [ "$rc" -ge 2 ]; then
+    echo "ERROR: 機密語パターンが不正な正規表現です(grep rc=$rc): $word" >&2
+    echo "~/.config/git/sensitive-words.txt の該当パターンを修正してください。" >&2
+    exit 1
+  fi
   [ -n "$matches" ] || continue
 
   if [ "$found" -eq 0 ]; then
@@ -75,8 +89,14 @@ if mise which shfmt >/dev/null 2>&1; then
   if [ -n "$sh_files" ]; then
     while IFS= read -r f; do
       [ -n "$f" ] || continue
-      mise exec -- shfmt -i 2 -w "$f"
-      git add "$f"
+      # set -eu 下で shfmt が失敗(構文エラー等)すると hook が無言クラッシュし
+      # コミットが理由不明に止まる(E-H1)。整形失敗は警告して再 stage を見送り、
+      # 構文の実害は後段の shellcheck に委ねる。
+      if mise exec -- shfmt -i 2 -w "$f"; then
+        git add "$f"
+      else
+        echo "警告: shfmt が $f の整形に失敗しました(構文エラー?)。整形をスキップします。" >&2
+      fi
     done <<<"$sh_files"
   fi
 fi
