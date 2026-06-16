@@ -14,9 +14,11 @@ words_file="$HOME/.config/git/sensitive-words.txt"
 
 # 追加行(先頭 +)だけを照合対象にする。削除行・コンテキスト行・diff ヘッダ(+++/---/@@)
 # まで含めると、機密語を「削除する」コミットや差分ヘッダのパス名で誤ブロックする(E-H2)。
+# ヘッダ除外は `+++ a/` `+++ b/` 形に限定する。単純な `^+++` だと、追加行の内容が `++` で
+# 始まる場合(diff 上は `++++secret...`)まで誤除外し機密語を取りこぼす(CodeRabbit PR#79)。
 # 末尾 CR も除去する。被検査側に CR が残ると end-anchor パターン($)が CRLF ファイルで
 # 取りこぼす(E-C2 のリスト側 strip と対称。GNU grep で顕著)。
-diff=$(git diff --cached --diff-filter=ACMR 2>/dev/null | grep '^+' | grep -v '^+++' | tr -d '\r' || true)
+diff=$(git diff --cached --diff-filter=ACMR 2>/dev/null | grep '^+' | grep -vE '^\+\+\+ [ab]/' | tr -d '\r' || true)
 [ -n "$diff" ] || exit 0
 
 found=0

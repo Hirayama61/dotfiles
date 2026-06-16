@@ -11,10 +11,10 @@ CHEZMOI_CC_DOTFILES = "{{ env.HOME }}/.config/chezmoi/cc-dotfiles.toml"
 [tools]
 chezmoi = "latest"
 # テスト/静的検査用。CI(mise-action)が global config 非依存で解決できるよう
-# ここに pin する(cc-dotfiles の tests と同方針)。
+# ここに pin する。上流更新での CI 不安定化を避けるため版を固定する(CodeRabbit PR#79)。
 bats = "1.13.0"
-shellcheck = "latest"
-shfmt = "latest"
+shellcheck = "0.11.0"
+shfmt = "3.13.1"
 
 # ─── 日次運用 ─────────────────────────────────────────
 

@@ -49,6 +49,14 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
+@test "E-H2: an added line whose content starts with ++ is still scanned (not mistaken for a header)" {
+  # diff 上は `++++SECRET...`。ヘッダ除外を `^+++` で広く取ると誤除外し漏れる(CodeRabbit PR#79)。
+  write_words 'SECRET_TOKEN'
+  stage_file config.txt "++SECRET_TOKEN=abc123"
+  run_precommit
+  [ "$status" -eq 1 ]
+}
+
 @test "E-C2: CRLF in words file still blocks" {
   write_words 'SECRET_TOKEN\r\n'
   stage_file config.txt "SECRET_TOKEN=abc123"
