@@ -12,12 +12,22 @@ msg_file=$1
 
 words_file="$HOME/.config/git/sensitive-words.txt"
 if [ -f "$words_file" ]; then
-  body=$(sed -e '/^#.*>8/,$d' -e '/^#/d' "$msg_file")
+  # 末尾 CR も除去(被検査側。E-C2 のリスト側 strip と対称。end-anchor の取りこぼし防止)。
+  body=$(sed -e '/^#.*>8/,$d' -e '/^#/d' "$msg_file" | tr -d '\r')
   if [ -n "$body" ]; then
     found=0
     while IFS= read -r word || [ -n "$word" ]; do
+      # CRLF のリストだと末尾 CR が ERE に混ざり全パターンが無効化される(E-C2)。
+      word=${word%$'\r'}
       [[ -z "$word" || "$word" == \#* ]] && continue
-      matches=$(printf '%s\n' "$body" | grep -inE "$word" || true)
+      # 不正な ERE を `|| true` で握ると grep のエラー(rc>=2)をマッチ無しと取り違える(E-C1)。
+      rc=0
+      matches=$(printf '%s\n' "$body" | grep -inE "$word") || rc=$?
+      if [ "$rc" -ge 2 ]; then
+        echo "ERROR: 機密語パターンが不正な正規表現です(grep rc=$rc): $word" >&2
+        echo "~/.config/git/sensitive-words.txt の該当パターンを修正してください。" >&2
+        exit 1
+      fi
       [ -n "$matches" ] || continue
       if [ "$found" -eq 0 ]; then
         echo "ERROR: 機密語がコミットメッセージに含まれています。コミットを中止しました。" >&2

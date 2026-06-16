@@ -10,6 +10,11 @@ CHEZMOI_CC_DOTFILES = "{{ env.HOME }}/.config/chezmoi/cc-dotfiles.toml"
 # (新マシンの bootstrap 時、まだ global config が deploy されていない段階で必要)。
 [tools]
 chezmoi = "latest"
+# テスト/静的検査用。CI(mise-action)が global config 非依存で解決できるよう
+# ここに pin する。上流更新での CI 不安定化を避けるため版を固定する(CodeRabbit PR#79)。
+bats = "1.13.0"
+shellcheck = "0.11.0"
+shfmt = "3.13.1"
 
 # ─── 日次運用 ─────────────────────────────────────────
 
@@ -136,3 +141,27 @@ run = "bin/demo.sh"
 [tasks."demo:kill"]
 description = "撮影用 tmux セッション 'demo' を撤収(他セッションは触らない)"
 run = "bin/demo.sh kill"
+
+# ─── テスト / 静的検査 ─────────────────────────────────
+# リポ直下=chezmoi 管理外(.chezmoiroot=home)。$HOME には展開されず CI/ローカル検証専用。
+# git hooks は拡張子なし(~/.config/git/hooks/{pre-commit,commit-msg})のため、
+# pre-commit 自身の `.sh$` shellcheck 網から漏れる。lint/syntax はパス明示で補う。
+
+[tasks.test]
+description = "bats で git hooks を検証(一時 HOME + 一時 repo で fixture 実行)"
+run = "bats --recursive tests"
+
+[tasks.lint]
+description = "shellcheck で git hooks を検査(拡張子なしのためパス明示。error レベル)"
+run = "shellcheck --severity=error home/dot_config/git/hooks/private_executable_pre-commit home/dot_config/git/hooks/private_executable_commit-msg"
+
+[tasks.syntax]
+description = "bash 3.2(macOS 同梱)構文チェック(拡張子なし hook をパス明示)"
+run = """
+/bin/bash -n home/dot_config/git/hooks/private_executable_pre-commit
+/bin/bash -n home/dot_config/git/hooks/private_executable_commit-msg
+"""
+
+[tasks.check]
+description = "test + lint + syntax を一括実行"
+depends = ["syntax", "lint", "test"]
