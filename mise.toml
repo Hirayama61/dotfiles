@@ -119,7 +119,7 @@ run = "rm -rf \"${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles\""
 # ─── 外部 skill / Obsidian 外部脳 ─────────────────────
 
 [tasks."skills:sync"]
-description = "ext-skills.txt の外部 skill を ghq clone & ~/.claude/skills へ symlink"
+description = "外部 skill(ext-skills.txt)+ ローカル進化(~/.claude-evolution/active)を ~/.claude/skills·agents へ symlink 同期"
 run = "bin/skills-sync.sh"
 
 [tasks."obsidian:init"]
