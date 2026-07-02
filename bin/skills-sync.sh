@@ -83,7 +83,7 @@ if [[ "$LOCAL_ONLY" -eq 0 ]]; then
   #   B. owner/repo/path/to/skill   コロンなし & 3 セグメント以上。1 ディレクトリを単体 symlink
   #   C. owner/repo                 コロンなし & 2 セグメント。subdir 既定 skills で複数 symlink
   # ghq get の対象はいずれも先頭 2 セグメント owner/repo。
-  while IFS= read -r line; do
+  while IFS= read -r line || [[ -n "$line" ]]; do
     line="${line%%#*}"
     # 前後空白のトリム。xargs は不対の引用符を含む行で異常終了し set -e で sync 全体が
     # 落ちるため、パラメータ展開で行う。
@@ -140,6 +140,16 @@ if [[ "$LOCAL_ONLY" -eq 0 ]]; then
         failed=$((failed + 1))
         continue
       fi
+      # leaf の symlink 検査だけでは skillpath 中間ディレクトリが symlink の場合に
+      # repo_root 外を指せる。実体パス(cd + pwd -P、BSD 互換で realpath 非依存)で
+      # repo_root 配下への封じ込めを確認する。
+      resolved="$(cd "$skill_dir" 2>/dev/null && pwd -P || true)"
+      repo_real="$(cd "$repo_root" 2>/dev/null && pwd -P || true)"
+      if [[ -z "$resolved" || -z "$repo_real" || "$resolved" != "$repo_real/"* ]]; then
+        echo "WARN: repo 外を指す skill のため skip: $spec/$skillpath" >&2
+        failed=$((failed + 1))
+        continue
+      fi
       # 明示指定が取れない=upstream のパス移動など陳腐化の兆候。無言 skip だと
       # prune で既存 symlink が消えても気づけないため WARN + 失敗計上する。
       [[ -f "$skill_dir/SKILL.md" ]] || {
@@ -168,6 +178,16 @@ if [[ "$LOCAL_ONLY" -eq 0 ]]; then
     for skill in "$src_root"/*/; do
       if [[ -L "${skill%/}" || -L "$skill/SKILL.md" ]]; then
         echo "WARN: symlink skill のため skip: $spec/$subdir/$(basename "$skill")" >&2
+        continue
+      fi
+      # 中間ディレクトリ / subdir 自体が symlink だと entry の実体が repo_root 外を
+      # 指せる。single モードと同じく repo_root の実体パスを境界に封じ込める(src_root は
+      # symlink だと解決先へ逃げるため境界に使えない)。multi は既存の symlink skip と
+      # 同じく行全体 failed にはせず WARN + continue(0 link なら後段でまとめて failed)。
+      resolved="$(cd "${skill%/}" 2>/dev/null && pwd -P || true)"
+      repo_real="$(cd "$repo_root" 2>/dev/null && pwd -P || true)"
+      if [[ -z "$resolved" || -z "$repo_real" || "$resolved" != "$repo_real/"* ]]; then
+        echo "WARN: repo 外を指す skill のため skip: $spec/$subdir/$(basename "$skill")" >&2
         continue
       fi
       [[ -f "$skill/SKILL.md" ]] || continue

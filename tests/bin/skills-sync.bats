@@ -189,9 +189,34 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
 
 @test "full: manifest line with traversal is rejected (WARN + no link, prune suppressed)" {
   printf 'owner/repo:../../evil\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR" "$BATS_TEST_TMPDIR/keep"
+  ln -s "$BATS_TEST_TMPDIR/keep" "$SKILLS_DIR/keep-me"
   run "$SYNC"
   [ "$status" -eq 1 ]
   [[ "$output" == *"不正な manifest 行"* ]]
+  [ -L "$SKILLS_DIR/keep-me" ]
+}
+
+@test "full: manifest without trailing newline still processes last line" {
+  _seed_ext_skill owner/repo skills ext-skill
+  printf '%s' 'owner/repo' >"$FAKE_REPO/ext-skills.txt"
+  run "$SYNC"
+  [ "$status" -eq 0 ]
+  [ -L "$SKILLS_DIR/ext-skill" ]
+}
+
+@test "full: single skill via symlinked intermediate dir escaping repo is skipped" {
+  # skills2 が repo 外を指す symlink 中間ディレクトリ(中に正当な SKILL.md を含む)。
+  # leaf 検査は素通りするため、実体パス封じ込めで repo 外 WARN skip されることを固定する。
+  mkdir -p "$BATS_TEST_TMPDIR/outside/ext-skill"
+  printf '# ext-skill\n' >"$BATS_TEST_TMPDIR/outside/ext-skill/SKILL.md"
+  mkdir -p "$FAKE_GHQ_ROOT/github.com/owner/repo"
+  ln -s "$BATS_TEST_TMPDIR/outside" "$FAKE_GHQ_ROOT/github.com/owner/repo/skills2"
+  printf 'owner/repo:skills2\n' >"$FAKE_REPO/ext-skills.txt"
+  run "$SYNC"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"repo 外を指す skill"* ]]
+  [ ! -e "$SKILLS_DIR/ext-skill" ]
 }
 
 @test "local-only: works without ghq on PATH" {
