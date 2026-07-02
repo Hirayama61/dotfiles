@@ -19,7 +19,7 @@ dotfiles/                          # このリポ
 │   └── sensitive-words.txt.example # 機密語リストの雛形(実体は git 管理外)
 ├── bin/
 │   ├── sync.sh                    # 削除自動化付き chezmoi apply ラッパー
-│   ├── skills-sync.sh             # ext-skills.txt の外部 skill を ghq clone & symlink
+│   ├── skills-sync.sh             # 外部 skill(ext-skills.txt)+ ローカル進化(active/)を symlink 同期
 │   ├── chezmoi-source.sh          # chezmoi source パス解決の単一情報源(sync.sh / mise run diff が使用)
 │   ├── macos-defaults.sh          # macOS システム設定の一括投入(mise run macos)
 │   ├── wt.sh                      # フラット worktree 作成ヘルパ(worktree 規約の正規経路)
@@ -146,6 +146,19 @@ mise run skills:sync   # ext-skills.txt を読み ghq clone/更新 → ~/.claude
 - `bin/skills-sync.sh` が `ghq get -u` で取得し `~/.claude/skills/<name>` へ symlink。マニフェストから外れた symlink は prune する(chezmoi 管理の実体ディレクトリには触れない)。
 - symlink は再配布ではない(本体は ghq clone でローカルに置く)ため LICENSE 同梱不要。
 - `~/.claude/skills/` には cc-dotfiles が実体管理する skill(`obsidian-memory` 等)と ext-skills 経由 symlink の skill が混在する。**外部 skill は vendoring せず symlink** が原則(例: `empirical-prompt-tuning` は `mizchi/skills` から取り込む)。
+
+## ローカル進化 (claude-evolution)
+
+Claude Code が作業の学びから自動生成した skill/agent は、**git 管理外・マシンローカル**の
+`~/.claude-evolution/` に蓄積する(業務知識を git に載せないための分離。仕組みの正典は
+cc-dotfiles の `skills/evolve/SKILL.md`)。
+
+- 生成(`/evolve`)→ `candidates/`(効力なし)→ 人間トリアージ(`/evolve-gate`)→ `active/` →
+  `bin/skills-sync.sh` が `~/.claude/skills`・`~/.claude/agents` へ symlink。
+- `bin/skills-sync.sh --local-only` は ghq 同期と prune をスキップしローカル進化のみ反映
+  (evolve-gate の承認経路用)。
+- 作成側の衝突ガード: 宛先が実体(chezmoi 管理)のときは WARN + skip し、実体を symlink で
+  上書きしない。prune は従来どおり symlink のみ対象。
 
 ## オーケストレーション
 
