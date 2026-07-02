@@ -132,14 +132,54 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   [ ! -L "$SKILLS_DIR/obsidian-memory" ]
 }
 
-@test "full: agent prune removes stale agent symlink, keeps active one" {
+@test "full: agent prune removes stale evolution-owned symlink, keeps active one" {
   _seed_active_agent my-agent
-  mkdir -p "$AGENTS_DIR" "$BATS_TEST_TMPDIR/stale"
-  ln -s "$BATS_TEST_TMPDIR/stale" "$AGENTS_DIR/stale-agent.md"
+  mkdir -p "$AGENTS_DIR"
+  printf 'gone\n' >"$BATS_TEST_TMPDIR/gone.md"
+  ln -s "$EVOLVE/active/agents/removed-agent.md" "$AGENTS_DIR/removed-agent.md"
   run "$SYNC"
   [ "$status" -eq 0 ]
   [ -L "$AGENTS_DIR/my-agent.md" ]
-  [ ! -e "$AGENTS_DIR/stale-agent.md" ]
+  [ ! -e "$AGENTS_DIR/removed-agent.md" ]
+}
+
+@test "full: agent prune leaves symlinks not owned by evolution dir" {
+  mkdir -p "$AGENTS_DIR" "$BATS_TEST_TMPDIR/manual"
+  printf 'manual\n' >"$BATS_TEST_TMPDIR/manual/hand.md"
+  ln -s "$BATS_TEST_TMPDIR/manual/hand.md" "$AGENTS_DIR/hand.md"
+  run "$SYNC"
+  [ "$status" -eq 0 ]
+  [ -L "$AGENTS_DIR/hand.md" ]
+}
+
+@test "local-only: symlink entries inside active/ are ignored (candidates stay inert)" {
+  mkdir -p "$EVOLVE/candidates/skills/sneaky" "$EVOLVE/active/skills"
+  printf '# sneaky\n' >"$EVOLVE/candidates/skills/sneaky/SKILL.md"
+  ln -s "$EVOLVE/candidates/skills/sneaky" "$EVOLVE/active/skills/sneaky"
+  run "$SYNC" --local-only
+  [ "$status" -eq 0 ]
+  [ ! -e "$SKILLS_DIR/sneaky" ]
+}
+
+@test "full: manifest line with traversal is rejected (WARN + no link, prune suppressed)" {
+  printf 'owner/repo:../../evil\n' >"$FAKE_REPO/ext-skills.txt"
+  run "$SYNC"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"不正な manifest 行"* ]]
+}
+
+@test "local-only: works without ghq on PATH" {
+  local shim2="$BATS_TEST_TMPDIR/noghq-bin"
+  mkdir -p "$shim2"
+  local c p
+  for c in bash sh env cat grep sed tr cut basename dirname mkdir rm ln readlink pwd chmod; do
+    p="$(command -v "$c" 2>/dev/null)" || continue
+    ln -sf "$p" "$shim2/$c"
+  done
+  _seed_active_skill my-learned
+  run env PATH="$shim2" "$SYNC" --local-only
+  [ "$status" -eq 0 ]
+  [ -L "$SKILLS_DIR/my-learned" ]
 }
 
 @test "full: failed sync (bad manifest path) suppresses prune" {

@@ -46,7 +46,8 @@ pruned=0
 failed=0
 
 # 衝突ガード付き symlink 作成。宛先が実体(非 symlink)なら chezmoi 管理の疑いとして
-# WARN + failed 計上で skip する(呼び出し側は `|| continue`)。
+# WARN + failed 計上で skip する(呼び出し側は `|| continue`)。ln 失敗も failed に
+# 計上する(握ると部分同期のまま成功終了し prune まで走る)。
 link_safe() {
   local src="$1" dst="$2"
   if [[ -e "$dst" && ! -L "$dst" ]]; then
@@ -54,7 +55,14 @@ link_safe() {
     failed=$((failed + 1))
     return 1
   fi
-  ln -sfn "$src" "$dst"
+  if [[ -L "$dst" && "$(readlink "$dst")" != "$src" ]]; then
+    echo "NOTE: 既存 symlink を別ソースで上書き: $dst" >&2
+  fi
+  if ! ln -sfn "$src" "$dst"; then
+    echo "WARN: symlink 作成に失敗: $dst" >&2
+    failed=$((failed + 1))
+    return 1
+  fi
 }
 
 # ── ソース 1: 外部 skill(ext-skills.txt)。--local-only では丸ごとスキップ ──
@@ -75,7 +83,10 @@ if [[ "$LOCAL_ONLY" -eq 0 ]]; then
   # ghq get の対象はいずれも先頭 2 セグメント owner/repo。
   while IFS= read -r line; do
     line="${line%%#*}"
-    line="$(echo "$line" | xargs)"
+    # 前後空白のトリム。xargs は不対の引用符を含む行で異常終了し set -e で sync 全体が
+    # 落ちるため、パラメータ展開で行う。
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
     [[ -z "$line" ]] && continue
 
     mode="multi"
@@ -97,6 +108,15 @@ if [[ "$LOCAL_ONLY" -eq 0 ]]; then
         spec="$line"
         subdir="skills"
       fi
+    fi
+
+    # manifest はリポ内ファイルで PR 経由の改変がありうる。spec の形式検証で ghq root 外への
+    # 脱出とフラグ注入(- 始まり)を、`..` 拒否で skillpath/subdir のトラバーサルを塞ぐ。
+    if [[ ! "$spec" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ || "$spec" == *..* ||
+      "${skillpath:-}" == *..* || "${subdir:-}" == *..* ]]; then
+      echo "WARN: 不正な manifest 行のため skip: $line" >&2
+      failed=$((failed + 1))
+      continue
     fi
 
     ghq get -u "$spec"
@@ -147,8 +167,11 @@ fi
 
 # ── ソース 2: ローカル進化(~/.claude-evolution/active)──
 # ディレクトリ不在・空は正常(まだ何も承認されていないマシン)。failed 計上しない。
+# active/ 直下の symlink エントリは対象外(candidates/ へ張った symlink 経由で
+# 未承認候補が効力を持つ経路を塞ぐ。「candidates は効力を持たない」の実装側担保)。
 shopt -s nullglob
 for skill in "$EVOLVE_DIR"/active/skills/*/; do
+  [[ -L "${skill%/}" ]] && continue
   [[ -f "$skill/SKILL.md" ]] || continue
   name="$(basename "$skill")"
   link_safe "${skill%/}" "$SKILLS_DIR/$name" || continue
@@ -158,6 +181,7 @@ for skill in "$EVOLVE_DIR"/active/skills/*/; do
 done
 agents_seen=0
 for agent in "$EVOLVE_DIR"/active/agents/*.md; do
+  [[ -f "$agent" && ! -L "$agent" ]] || continue
   [[ "$agents_seen" -eq 0 ]] && mkdir -p "$AGENTS_DIR" && agents_seen=1
   name="$(basename "$agent")"
   link_safe "$agent" "$AGENTS_DIR/$name" || continue
@@ -187,10 +211,15 @@ else
     pruned=$((pruned + 1))
     echo "pruned: $name"
   done
-  # agents は symlink 供給源がローカル進化のみ。skills と同じ [[ -L ]] 限定 prune。
+  # agents の prune は「リンク先がローカル進化配下の symlink」に限定する(手動作成や
+  # 別ツール由来の agent symlink を管轄外として刈らない。skills 側より管轄を狭く取る)。
   if [[ -d "$AGENTS_DIR" ]]; then
     for entry in "$AGENTS_DIR"/*; do
       [[ -L "$entry" ]] || continue
+      case "$(readlink "$entry")" in
+      "$EVOLVE_DIR"/*) ;;
+      *) continue ;;
+      esac
       name="$(basename "$entry")"
       grep -qxF "$name" <<<"$wanted_agents" && continue
       rm -f "$entry"
