@@ -9,6 +9,8 @@
 #                                          スキップする evolve-gate 承認経路用の軽量モード)
 #
 # マニフェスト集合 + ローカル進化集合から外れた symlink は prune する(全量同期時のみ)。
+# 同名 skill が両ソースにある場合は後段のローカル進化が勝つ(意図した優先順位。
+# 上書き時は link_safe が NOTE を出す)。
 #
 # chezmoi 非干渉:
 #   - prune は [[ -L ]] で symlink のみ対象とし、chezmoi 管理の実体 skill ディレクトリ
@@ -110,20 +112,34 @@ if [[ "$LOCAL_ONLY" -eq 0 ]]; then
       fi
     fi
 
-    # manifest はリポ内ファイルで PR 経由の改変がありうる。spec の形式検証で ghq root 外への
-    # 脱出とフラグ注入(- 始まり)を、`..` 拒否で skillpath/subdir のトラバーサルを塞ぐ。
-    if [[ ! "$spec" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ || "$spec" == *..* ||
+    # manifest はリポ内ファイルで PR 経由の改変がありうる。spec の形式検証(各セグメント
+    # 先頭は英数字 = フラグ注入 `-` 始まりと `.` 単独セグメントを排除)で ghq root 外への
+    # 脱出を、`..` 拒否で skillpath/subdir のトラバーサルを塞ぐ。
+    if [[ ! "$spec" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$ || "$spec" == *..* ||
       "${skillpath:-}" == *..* || "${subdir:-}" == *..* ]]; then
       echo "WARN: 不正な manifest 行のため skip: $line" >&2
       failed=$((failed + 1))
       continue
     fi
 
-    ghq get -u "$spec"
+    # 外部要因(ネットワーク断・upstream 消滅)でスクリプト全体を即死させず、この行だけ
+    # 失敗扱いにする(failed>0 で prune 抑止に乗るため安全)。
+    if ! ghq get -u "$spec"; then
+      echo "WARN: ghq get に失敗: $spec" >&2
+      failed=$((failed + 1))
+      continue
+    fi
     repo_root="$(ghq root)/github.com/$spec"
 
     if [[ "$mode" == "single" ]]; then
       skill_dir="$repo_root/$skillpath"
+      # 外部リポが仕込んだ symlink skill は拒否する(clone された symlink を辿ると
+      # リポ外のローカルファイルが skill コンテンツとしてモデルに読まれる)。
+      if [[ -L "$skill_dir" || -L "$skill_dir/SKILL.md" ]]; then
+        echo "WARN: symlink skill のため skip: $spec/$skillpath" >&2
+        failed=$((failed + 1))
+        continue
+      fi
       # 明示指定が取れない=upstream のパス移動など陳腐化の兆候。無言 skip だと
       # prune で既存 symlink が消えても気づけないため WARN + 失敗計上する。
       [[ -f "$skill_dir/SKILL.md" ]] || {
@@ -150,6 +166,10 @@ if [[ "$LOCAL_ONLY" -eq 0 ]]; then
     # 0 link はこの repo から1つも取れていない=異常として WARN + 失敗計上する。
     linked_here=0
     for skill in "$src_root"/*/; do
+      if [[ -L "${skill%/}" || -L "$skill/SKILL.md" ]]; then
+        echo "WARN: symlink skill のため skip: $spec/$subdir/$(basename "$skill")" >&2
+        continue
+      fi
       [[ -f "$skill/SKILL.md" ]] || continue
       name="$(basename "$skill")"
       link_safe "${skill%/}" "$SKILLS_DIR/$name" || continue
@@ -167,29 +187,49 @@ fi
 
 # ── ソース 2: ローカル進化(~/.claude-evolution/active)──
 # ディレクトリ不在・空は正常(まだ何も承認されていないマシン)。failed 計上しない。
-# active/ 直下の symlink エントリは対象外(candidates/ へ張った symlink 経由で
-# 未承認候補が効力を持つ経路を塞ぐ。「candidates は効力を持たない」の実装側担保)。
-shopt -s nullglob
-for skill in "$EVOLVE_DIR"/active/skills/*/; do
-  [[ -L "${skill%/}" ]] && continue
-  [[ -f "$skill/SKILL.md" ]] || continue
-  name="$(basename "$skill")"
-  link_safe "${skill%/}" "$SKILLS_DIR/$name" || continue
-  wanted="$wanted$name"$'\n'
-  linked=$((linked + 1))
-  echo "linked(local): $name -> ${skill%/}"
+# symlink 経由で candidates/ が効力を持つ経路を、エントリ単位 + 親階層の両方で塞ぐ
+# (「candidates は効力を持たない」の実装側担保)。名前は evolve の規約 ^[a-z0-9-]+$ に
+# 一致するものだけ link する(evolve-gate の退避 .prev や不正名を有効化しない)。
+evolve_dirs_ok=1
+for d in "$EVOLVE_DIR" "$EVOLVE_DIR/active" "$EVOLVE_DIR/active/skills" "$EVOLVE_DIR/active/agents"; do
+  if [[ -L "$d" ]]; then
+    echo "WARN: ローカル進化の階層が symlink のため全 skip: $d" >&2
+    failed=$((failed + 1))
+    evolve_dirs_ok=0
+    break
+  fi
 done
-agents_seen=0
-for agent in "$EVOLVE_DIR"/active/agents/*.md; do
-  [[ -f "$agent" && ! -L "$agent" ]] || continue
-  [[ "$agents_seen" -eq 0 ]] && mkdir -p "$AGENTS_DIR" && agents_seen=1
-  name="$(basename "$agent")"
-  link_safe "$agent" "$AGENTS_DIR/$name" || continue
-  wanted_agents="$wanted_agents$name"$'\n'
-  linked=$((linked + 1))
-  echo "linked(local-agent): $name -> $agent"
-done
-shopt -u nullglob
+if [[ "$evolve_dirs_ok" -eq 1 ]]; then
+  shopt -s nullglob
+  for skill in "$EVOLVE_DIR"/active/skills/*/; do
+    [[ -L "${skill%/}" || -L "$skill/SKILL.md" ]] && continue
+    [[ -f "$skill/SKILL.md" ]] || continue
+    name="$(basename "$skill")"
+    [[ "$name" =~ ^[a-z0-9-]+$ ]] || {
+      echo "WARN: 名前規約外のためスキップ(local): $name" >&2
+      continue
+    }
+    link_safe "${skill%/}" "$SKILLS_DIR/$name" || continue
+    wanted="$wanted$name"$'\n'
+    linked=$((linked + 1))
+    echo "linked(local): $name -> ${skill%/}"
+  done
+  agents_seen=0
+  for agent in "$EVOLVE_DIR"/active/agents/*.md; do
+    [[ -f "$agent" && ! -L "$agent" ]] || continue
+    name="$(basename "$agent")"
+    [[ "${name%.md}" =~ ^[a-z0-9-]+$ ]] || {
+      echo "WARN: 名前規約外のためスキップ(local-agent): $name" >&2
+      continue
+    }
+    [[ "$agents_seen" -eq 0 ]] && mkdir -p "$AGENTS_DIR" && agents_seen=1
+    link_safe "$agent" "$AGENTS_DIR/$name" || continue
+    wanted_agents="$wanted_agents$name"$'\n'
+    linked=$((linked + 1))
+    echo "linked(local-agent): $name -> $agent"
+  done
+  shopt -u nullglob
+fi
 
 # ── prune(全量同期時のみ)──
 # 同期失敗(failed>0)があると wanted が不完全=本来 link されるべき skill が
@@ -206,7 +246,7 @@ else
   for entry in "$SKILLS_DIR"/*; do
     [[ -L "$entry" ]] || continue
     name="$(basename "$entry")"
-    grep -qxF "$name" <<<"$wanted" && continue
+    grep -qxF -- "$name" <<<"$wanted" && continue
     rm -f "$entry"
     pruned=$((pruned + 1))
     echo "pruned: $name"
@@ -221,7 +261,7 @@ else
       *) continue ;;
       esac
       name="$(basename "$entry")"
-      grep -qxF "$name" <<<"$wanted_agents" && continue
+      grep -qxF -- "$name" <<<"$wanted_agents" && continue
       rm -f "$entry"
       pruned=$((pruned + 1))
       echo "pruned(agent): $name"

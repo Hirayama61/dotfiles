@@ -135,12 +135,11 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
 @test "full: agent prune removes stale evolution-owned symlink, keeps active one" {
   _seed_active_agent my-agent
   mkdir -p "$AGENTS_DIR"
-  printf 'gone\n' >"$BATS_TEST_TMPDIR/gone.md"
   ln -s "$EVOLVE/active/agents/removed-agent.md" "$AGENTS_DIR/removed-agent.md"
   run "$SYNC"
   [ "$status" -eq 0 ]
   [ -L "$AGENTS_DIR/my-agent.md" ]
-  [ ! -e "$AGENTS_DIR/removed-agent.md" ]
+  [ ! -L "$AGENTS_DIR/removed-agent.md" ]
 }
 
 @test "full: agent prune leaves symlinks not owned by evolution dir" {
@@ -159,6 +158,33 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   run "$SYNC" --local-only
   [ "$status" -eq 0 ]
   [ ! -e "$SKILLS_DIR/sneaky" ]
+}
+
+@test "local-only: active/skills dir itself being a symlink is fully skipped" {
+  mkdir -p "$EVOLVE/candidates/skills/sneaky" "$EVOLVE/active"
+  printf '# sneaky\n' >"$EVOLVE/candidates/skills/sneaky/SKILL.md"
+  ln -s "$EVOLVE/candidates/skills" "$EVOLVE/active/skills"
+  run "$SYNC" --local-only
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"階層が symlink"* ]]
+  [ ! -e "$SKILLS_DIR/sneaky" ]
+}
+
+@test "local-only: names outside ^[a-z0-9-]+$ (e.g. .prev leftovers) are not linked" {
+  _seed_active_skill my-learned
+  mkdir -p "$EVOLVE/active/skills/my-learned.prev"
+  printf '# old\n' >"$EVOLVE/active/skills/my-learned.prev/SKILL.md"
+  run "$SYNC" --local-only
+  [ "$status" -eq 0 ]
+  [ -L "$SKILLS_DIR/my-learned" ]
+  [ ! -e "$SKILLS_DIR/my-learned.prev" ]
+}
+
+@test "full: manifest line with leading dash is rejected" {
+  printf -- '-shallow/repo\n' >"$FAKE_REPO/ext-skills.txt"
+  run "$SYNC"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"不正な manifest 行"* ]]
 }
 
 @test "full: manifest line with traversal is rejected (WARN + no link, prune suppressed)" {

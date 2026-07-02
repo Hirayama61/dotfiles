@@ -148,18 +148,19 @@ run = "bin/demo.sh kill"
 # pre-commit 自身の `.sh$` shellcheck 網から漏れる。lint/syntax はパス明示で補う。
 
 [tasks.test]
-description = "bats で git hooks を検証(一時 HOME + 一時 repo で fixture 実行)"
+description = "bats で git hooks / bin スクリプトを検証(一時 HOME + 一時 repo で fixture 実行)"
 run = "bats --recursive tests"
 
 [tasks.lint]
-description = "shellcheck で git hooks を検査(拡張子なしのためパス明示。error レベル)"
-run = "shellcheck --severity=error home/dot_config/git/hooks/private_executable_pre-commit home/dot_config/git/hooks/private_executable_commit-msg"
+description = "shellcheck で git hooks / bin/skills-sync.sh を検査(hooks は拡張子なしのためパス明示。error レベル)"
+run = "shellcheck --severity=error home/dot_config/git/hooks/private_executable_pre-commit home/dot_config/git/hooks/private_executable_commit-msg bin/skills-sync.sh"
 
 [tasks.syntax]
-description = "bash 3.2(macOS 同梱)構文チェック(拡張子なし hook をパス明示)"
+description = "bash 3.2(macOS 同梱)構文チェック(拡張子なし hook + bin/skills-sync.sh をパス明示)"
 run = """
 /bin/bash -n home/dot_config/git/hooks/private_executable_pre-commit
 /bin/bash -n home/dot_config/git/hooks/private_executable_commit-msg
+/bin/bash -n bin/skills-sync.sh
 """
 
 [tasks.check]
