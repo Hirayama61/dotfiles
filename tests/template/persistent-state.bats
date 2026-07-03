@@ -29,12 +29,14 @@ setup() {
 }
 
 # dump-config の JSON 出力から persistentState の値を抜く(jq 不使用)。
-# pipefail 付きの subshell で、chezmoi 失敗・persistentState 行欠落(grep miss)を
-# 非ゼロ終了として呼び出し側へ伝える(サイレントに空成功へ落とさない)。
+# JSON として grep/sed 解析するため `--format=json` を明示し、将来 dump-config の
+# 既定形式が変わっても解析が壊れないようにする。pipefail 付きの subshell で、
+# chezmoi 失敗・persistentState 行欠落(grep miss)を非ゼロ終了として呼び出し側へ
+# 伝える(サイレントに空成功へ落とさない)。
 _pstate() {
   (
     set -o pipefail
-    chezmoi --config "$1" dump-config 2>/dev/null \
+    chezmoi --config "$1" dump-config --format=json 2>/dev/null \
       | grep '"persistentState"' \
       | sed -E 's/.*"persistentState"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/'
   )
