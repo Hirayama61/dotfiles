@@ -26,6 +26,10 @@ setup() {
   # chezmoi の ~ 展開は $HOME に追従するため、期待パスも $HOME 起点で組み立てる。
   export HOME="$BATS_TEST_TMPDIR/home"
   mkdir -p "$HOME"
+  # cacheDir フォールバック回帰は chezmoi の既定 cacheDir($HOME/.cache/chezmoi)を
+  # 決め打ちする。XDG_CACHE_HOME が設定された環境では既定が $XDG_CACHE_HOME/chezmoi に
+  # 変わり誤 fail するため、既定を $HOME 起点へ固定する。
+  unset XDG_CACHE_HOME
   EXPECT_STATE_DOTFILES="$HOME/.local/share/chezmoi/dotfiles-state.boltdb"
   EXPECT_STATE_CC="$HOME/.local/share/chezmoi/cc-dotfiles-state.boltdb"
   EXPECT_CACHE_DOTFILES="$HOME/.cache/chezmoi/dotfiles"
