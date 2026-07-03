@@ -37,7 +37,7 @@ dotfiles/                          # このリポ
 └── home/dot_claude/...            # ~/.claude/... を管理
 
 ~/.config/chezmoi/                 # ローカル限定(どちらのリポにも入らない)
-├── dotfiles.toml                  # sourceDir, persistentStateAbsPath, [data]
+├── dotfiles.toml                  # sourceDir, persistentState, [data]
 └── cc-dotfiles.toml             # 同上(cc-dotfiles 用)
 ```
 
@@ -102,7 +102,7 @@ bootstrap 時に1回流す想定で、apply の depends には入れていない
 - **dot_ プレフィックス**: `home/dot_zshrc` → `~/.zshrc`、`home/dot_config/nvim/init.lua` → `~/.config/nvim/init.lua`。chezmoi 標準のリネーム規則。
 - **chezmoi のソースルートは `home/`**: `.chezmoiroot` ファイルでそう指示している。リポルート直下のファイル(CLAUDE.md, mise.toml 等)は chezmoi の管理対象外。
 - **`~/.config/chezmoi/*.toml` は git 管理外**: 雛形は `template/` に commit するが、実体ファイルにはマシン固有の値(email、業務PCのユーザー名等)が入る可能性があるためローカル専用。
-- **state DB は config ごとに分離**: `persistentStateAbsPath` で別ファイルにする(`template/*.toml` でそう設定済)。
+- **state DB / cache は config ごとに分離**: トップレベルキー `persistentState`(state DB)と `cacheDir`(externals 等のキャッシュ)で別パスにする(`template/*.toml` でそう設定済)。どちらも `[chezmoi]` 配下ではなくトップレベルに置くこと(誤ってテーブル配下に書くと未知キーとして黙殺され、共有既定を奪い合って並列 apply が競合する)。
 - **cc-dotfiles リポの clone 先は固定**: `~/ghq/github.com/Hirayama61/cc-dotfiles`。`mise.toml` の `CC_DOTFILES_DIR` で参照。
 - **Brewfile は厳選**: ブートストラップ用 CLI(`mise`)と GUI cask のみ。CLI ツールは原則 chezmoi で扱える設定ファイル管理に寄せ、ツール本体は mise や Homebrew formula で個別に管理する判断は都度行う。
 

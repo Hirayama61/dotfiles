@@ -5,8 +5,11 @@
 
 sourceDir = "~/ghq/github.com/Hirayama61/cc-dotfiles"
 
-[chezmoi]
-persistentStateAbsPath = "~/.local/share/chezmoi/cc-dotfiles-state.boltdb"
+# state DB を config ごとに分離(複数 chezmoi 運用の必須対策)
+persistentState = "~/.local/share/chezmoi/cc-dotfiles-state.boltdb"
+
+# cache も config ごとに分離(externals 追加時の並列 apply 競合を予防)
+cacheDir = "~/.cache/chezmoi/cc-dotfiles"
 
 [data]
 # cc-dotfiles 側で必要なテンプレート変数があればここに
