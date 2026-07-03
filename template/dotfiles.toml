@@ -5,9 +5,8 @@
 
 sourceDir = "~/ghq/github.com/Hirayama61/dotfiles"
 
-[chezmoi]
 # state DB を config ごとに分離(複数 chezmoi 運用の必須対策)
-persistentStateAbsPath = "~/.local/share/chezmoi/dotfiles-state.boltdb"
+persistentState = "~/.local/share/chezmoi/dotfiles-state.boltdb"
 
 [data]
 # テンプレート(.tmpl)から {{ .email }} のように参照する値をここに書く
