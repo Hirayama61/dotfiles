@@ -46,7 +46,7 @@ gwq naming(~/worktrees/<host>/<owner>/<repo>/<branch>)でパスを算出し、
 同じブランチの worktree が既にあれば冪等に再利用する。
 
 引数:
-  <branch>     worktree 化するブランチ名。ローカル/リモートに既存なら追跡、無ければ新規作成。
+  <branch>     worktree 化するブランチ名。ローカル既存はそのまま、リモート既存は追跡、無ければ新規作成。
   <base-ref>   省略可。新規ブランチの土台。省略時は HEAD。
 
 例:
