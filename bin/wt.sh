@@ -32,9 +32,48 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 . "$SCRIPT_DIR/lib/resolve-worktree-path.sh"
 
+# Usage 行の単一情報源。エラー時は stderr、--help 時は stdout に回す。
+usage() {
+  echo "Usage: $0 <branch> [<base-ref>]"
+}
+
+print_help() {
+  usage
+  cat <<'EOF'
+
+フラット worktree を作成し、その絶対パスを stdout に1行だけ返す。
+gwq naming(~/worktrees/<host>/<owner>/<repo>/<branch>)でパスを算出し、
+同じブランチの worktree が既にあれば冪等に再利用する。
+
+引数:
+  <branch>     worktree 化するブランチ名。ローカル既存はそのまま、リモート既存は追跡、無ければ新規作成。
+  <base-ref>   省略可。新規ブランチの土台。省略時は HEAD。
+
+例:
+  cd "$(bin/wt.sh feature/x)"     # feature/x の worktree を作って cd
+  bin/wt.sh fix/bug main          # main を土台に fix/bug を新規作成
+EOF
+}
+
+# -/-- 始まりのトークンはブランチ名として扱わない(git worktree add へ到達させない)。
+# git チェックより前に置き、リポ外でも --help を出せるようにする。
+for arg in "$@"; do
+  case "$arg" in
+  -h | --help)
+    print_help
+    exit 0
+    ;;
+  -*)
+    echo "wt.sh: 不明なオプション: $arg" >&2
+    usage >&2
+    exit 1
+    ;;
+  esac
+done
+
 # ── 引数チェック ───────────────────────────────────────
 if [[ $# -lt 1 || $# -gt 2 ]]; then
-  echo "Usage: $0 <branch> [<base-ref>]" >&2
+  usage >&2
   exit 1
 fi
 
