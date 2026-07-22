@@ -114,12 +114,15 @@ age_of() {
 
 # 全タスクを 1 パスで TSV 化する(1 ファイル 1 jq。壊れ JSON の警告は 1 描画 1 回/ファイル)。
 # 列: status \t repo \t title \t window_name \t next_action \t ctx \t updated_at
+# 空文字は "-" に置換してから @tsv する — bash の read は IFS のタブを空白文字として扱い
+# 連続タブを 1 区切りに潰すため、空フィールドがあると列がずれる(未配車 backlog で実測)。
 collect_rows() {
   for f in "$FLEET_DIR"/tasks/*.json; do
     [ -e "$f" ] || continue
     jq -r '[(.status // "?"), (.repo // "-"), (.title // "-"), (.window_name // "-"),
             (.next_action // "-"), ((.context_pct // "?") | tostring), (.updated_at // "")]
       | map(if type == "string" then gsub("[[:cntrl:]]"; "") else . end)
+      | map(if . == "" then "-" else . end)
       | @tsv' "$f" 2>/dev/null || {
       echo "$PROG: 読めない JSON を skip: $f" >&2
       continue
