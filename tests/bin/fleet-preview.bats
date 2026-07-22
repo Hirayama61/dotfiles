@@ -104,3 +104,16 @@ EOF
   [[ "$output" == *"生存タスク"* ]]
   [[ "$output" != *"完了タスク"* ]]
 }
+
+@test "--once: empty string fields (undispatched backlog) keep column alignment" {
+  cat >"$TASKS/empty-fields.json" <<'JSON'
+{"id":"empty-fields","title":"backlog-task","repo":"dotfiles","branch":"","worktree":"","tmux_window":"","window_name":"","tmux_pane":"","status":"backlog","phase":"idea","context_pct":0,"next_action":"act-empty","updated_at":""}
+JSON
+  run --separate-stderr bash "$SCRIPT" --once
+  [ "$status" -eq 0 ]
+  row="$(printf '%s\n' "$output" | grep 'backlog-task')"
+  [[ "$row" == *"act-empty"* ]]
+  # 旧バグ: 空フィールドの潰れで updated_at 等が左の列へずれ込む(ctx% 列に timestamp が出る)
+  [[ "$row" != *"T"*"+0"* ]] || false
+  [[ "$row" == *" - "* ]]
+}
