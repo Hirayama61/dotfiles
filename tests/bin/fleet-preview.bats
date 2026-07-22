@@ -65,13 +65,28 @@ EOF
   [ "$wait_line" -lt "$run_line" ]
 }
 
-@test "--once: broken JSON is skipped with a stderr warning, valid tasks still render" {
+@test "--once: broken JSON is skipped with exactly one stderr warning, valid tasks still render" {
   write_task ok-task running "正常タスク"
   echo '{ broken' >"$TASKS/broken.json"
   run --separate-stderr bash "$SCRIPT" --once
   [ "$status" -eq 0 ]
   [[ "$output" == *"正常タスク"* ]]
-  [[ "$stderr" == *"broken.json"* ]]
+  [ "$(printf '%s\n' "$stderr" | grep -c 'broken.json')" -eq 1 ]
+}
+
+@test "--once: control chars (ESC) in JSON strings are stripped before rendering" {
+  printf '%s\n' '{"id":"esc","title":"a\u001b[31mEVILb","repo":"dotfiles","status":"running","window_name":"esc","next_action":"n","context_pct":1,"updated_at":"2026-07-22T12:00:00+09:00"}' >"$TASKS/esc.json"
+  run --separate-stderr bash "$SCRIPT" --once
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"a[31mEVILb"* ]]
+  esc_char="$(printf '\033')"
+  [[ "$output" != *"${esc_char}[31m"* ]]
+}
+
+@test "invalid FLEET_PREVIEW_INTERVAL fails fast with a clear error" {
+  run --separate-stderr env FLEET_PREVIEW_INTERVAL=0 bash "$SCRIPT" --once
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"FLEET_PREVIEW_INTERVAL"* ]]
 }
 
 @test "--once: missing tasks dir is fail-open (no error, empty notice)" {
