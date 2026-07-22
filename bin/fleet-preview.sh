@@ -175,11 +175,12 @@ force=1
 trap 'force=1' WINCH
 prev_body=""
 tick=0
-force_every=$((60 / INTERVAL))
+force_every=$(((60 + INTERVAL - 1) / INTERVAL))
 [ "$force_every" -lt 1 ] && force_every=1
 while :; do
   out="$(render 2>&1)"
-  body="$(printf '%s\n' "$out" | tail -n +2)"
+  # 時計行は位置でなく内容で除外する(2>&1 で警告が先頭に混ざっても差分抑制が壊れない)
+  body="$(printf '%s\n' "$out" | grep -v '^claude-fleet ' || true)"
   if [ "$force" -eq 1 ] || [ "$body" != "$prev_body" ]; then
     [ "$force" -eq 1 ] && printf '\033[2J'
     printf '\033[H%s\n\033[J' "$out"
