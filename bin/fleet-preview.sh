@@ -163,9 +163,32 @@ if [ "$ONCE" -eq 1 ]; then
   exit 0
 fi
 
+# 常駐ループはちらつき防止のため全画面クリア(\033[2J = 空白フレームが挟まり点滅する)を
+# 毎回は使わない。カーソルをホームへ戻して上書き描画し、末尾の残りだけ \033[J で消す。
+# 描画内容(時計行を除く)が前回と同じならターミナルへ何も書かない。ただし:
+# - 警告(stderr)は 2>&1 でフレームに取り込む(pane へ直接漏れると差分描画では
+#   消えず残留するため。--once は従来どおり stdout/stderr 分離)。
+# - 約 60 秒ごと・WINCH(端末リサイズ)後は全画面クリア付きで強制再描画する
+#   (外部要因の画面崩れ回復と時計の更新を兼ねる)。
 trap 'exit 0' INT TERM
+force=1
+trap 'force=1' WINCH
+prev_body=""
+tick=0
+force_every=$(((60 + INTERVAL - 1) / INTERVAL))
+[ "$force_every" -lt 1 ] && force_every=1
 while :; do
-  printf '\033[2J\033[H'
-  render
+  out="$(render 2>&1)"
+  # 時計行は位置でなく内容で除外する(2>&1 で警告が先頭に混ざっても差分抑制が壊れない)
+  body="$(printf '%s\n' "$out" | grep -v '^claude-fleet ' || true)"
+  if [ "$force" -eq 1 ] || [ "$body" != "$prev_body" ]; then
+    [ "$force" -eq 1 ] && printf '\033[2J'
+    printf '\033[H%s\n\033[J' "$out"
+    prev_body="$body"
+    force=0
+    tick=0
+  fi
+  tick=$((tick + 1))
+  [ "$tick" -ge "$force_every" ] && force=1
   sleep "$INTERVAL"
 done
