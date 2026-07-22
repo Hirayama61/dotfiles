@@ -132,9 +132,6 @@ setw -g window-status-current-format "#[fg={{ .panda.bg.hex }},bg={{ .panda.cyan
 # popup でツール呼び出し
 # ============================
 
-# Prefix + g: tig をポップアップで起動(差分確認・コミット)
-bind g popup -w90% -h90% -d '#{pane_current_path}' -E 'tig'
-
 # Prefix + T / G: worktree / ghq repo を popup の fzf で選び、呼び出し元 pane で cd(Enter)か新 window(C-s)で開く。
 # T=workTree / G=Ghq。小文字 w(=window 一覧 choose-tree)と紛らわしい W は避けた。
 # 旧 zsh の Ctrl+G widget(^g^g / ^g^w)を tmux に一本化したもの。prefix は Claude Code 等の TUI
