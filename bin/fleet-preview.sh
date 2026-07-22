@@ -163,9 +163,20 @@ if [ "$ONCE" -eq 1 ]; then
   exit 0
 fi
 
+# 常駐ループはちらつき防止のため全画面クリア(\033[2J = 空白フレームが挟まり点滅する)を
+# 使わない。カーソルをホームへ戻して上書き描画し、末尾の残りだけ \033[J で消す。
+# さらに描画内容(時計行を除く)が前回と同じならターミナルへ何も書かない。
 trap 'exit 0' INT TERM
+prev_body=""
+first=1
 while :; do
-  printf '\033[2J\033[H'
-  render
+  out="$(render)"
+  body="$(printf '%s\n' "$out" | tail -n +2)"
+  if [ "$first" -eq 1 ] || [ "$body" != "$prev_body" ]; then
+    [ "$first" -eq 1 ] && printf '\033[2J'
+    printf '\033[H%s\n\033[J' "$out"
+    prev_body="$body"
+    first=0
+  fi
   sleep "$INTERVAL"
 done
