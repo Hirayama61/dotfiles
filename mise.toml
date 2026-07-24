@@ -15,9 +15,6 @@ chezmoi = "latest"
 bats = "1.13.0"
 shellcheck = "0.11.0"
 shfmt = "3.13.1"
-# fleet-preview.bats が使う。runtime は system jq(macOS 15+ 同梱)前提で、
-# この pin は CI/bats の再現性のため(bats/shellcheck と同軸。runtime 供給ではない)。
-jq = "1.7.1"
 
 # ─── 日次運用 ─────────────────────────────────────────
 
@@ -144,12 +141,6 @@ run = "bin/demo.sh"
 [tasks."demo:kill"]
 description = "撮影用 tmux セッション 'demo' を撤収(他セッションは触らない)"
 run = "bin/demo.sh kill"
-
-# ─── claude-fleet ─────────────────────────────────────
-
-[tasks."fleet:preview"]
-description = "claude-fleet タスク一覧のプレビュー描画(tmux ホーム右 pane 常駐用)"
-run = "bin/fleet-preview.sh"
 
 # ─── テスト / 静的検査 ─────────────────────────────────
 # リポ直下=chezmoi 管理外(.chezmoiroot=home)。$HOME には展開されず CI/ローカル検証専用。
