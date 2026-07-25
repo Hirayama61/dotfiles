@@ -287,8 +287,8 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   printf 'real\n' >"$SKILLS_DIR/hand-placed/SKILL.md"
   run "$SYNC"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"管理外"* ]]
-  [[ "$output" == *"unmanaged=1"* ]]
+  _has '管理外' "$output"
+  _has 'unmanaged=1' "$output"
   [ -d "$SKILLS_DIR/hand-placed" ]
   [ "$(cat "$SKILLS_DIR/hand-placed/SKILL.md")" = "real" ]
 }
@@ -299,8 +299,8 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   printf 'real\n' >"$SKILLS_DIR/obsidian-memory/SKILL.md"
   run "$SYNC"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"unmanaged=0"* ]]
-  [[ "$output" != *"管理外"* ]]
+  _has 'unmanaged=0' "$output"
+  _lacks '管理外' "$output"
 }
 
 @test "unmanaged: real agent file with no chezmoi source is reported, never removed" {
@@ -309,7 +309,7 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   printf 'hand\n' >"$AGENTS_DIR/hand.md"
   run "$SYNC"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"unmanaged=1"* ]]
+  _has 'unmanaged=1' "$output"
   [ -f "$AGENTS_DIR/hand.md" ]
   [ ! -L "$AGENTS_DIR/hand.md" ]
 }
@@ -319,8 +319,8 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   printf 'real\n' >"$SKILLS_DIR/hand-placed/SKILL.md"
   run "$SYNC"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"unmanaged=0"* ]]
-  [[ "$output" != *"管理外"* ]]
+  _has 'unmanaged=0' "$output"
+  _lacks '管理外' "$output"
 }
 
 @test "unmanaged: presence changes neither prune count nor exit code" {
@@ -329,15 +329,15 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   ln -s "$BATS_TEST_TMPDIR/stale" "$SKILLS_DIR/stale-skill"
   run "$SYNC"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"pruned=1"* ]]
-  [[ "$output" == *"unmanaged=0"* ]]
+  _has 'pruned=1' "$output"
+  _has 'unmanaged=0' "$output"
 
   mkdir -p "$SKILLS_DIR/hand-placed"
   ln -s "$BATS_TEST_TMPDIR/stale" "$SKILLS_DIR/stale-skill"
   run "$SYNC"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"pruned=1"* ]]
-  [[ "$output" == *"unmanaged=1"* ]]
+  _has 'pruned=1' "$output"
+  _has 'unmanaged=1' "$output"
 }
 
 @test "check: declared symlink in place -> exit 0 without calling ghq" {
