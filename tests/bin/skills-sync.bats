@@ -425,6 +425,20 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   [ ! -e "$GHQ_TRACE" ]
 }
 
+@test "check: a skill overridden by local evolution is not a mismatch" {
+  # 同名 skill が両ソースにあるとローカル進化が勝つのは仕様(スクリプト冒頭)。full sync が
+  # exit 0 で作る状態を --check が赤にすると、緑の同期直後に恒常的な赤が出る。
+  _seed_ext_skill owner/repo skills ext-skill
+  _seed_active_skill ext-skill
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR"
+  ln -s "$EVOLVE/active/skills/ext-skill" "$SKILLS_DIR/ext-skill"
+  run "$SYNC" --check
+  [ "$status" -eq 0 ]
+  _has 'checked=1 missing=0 mismatch=0' "$output"
+  _lacks 'mismatch: ext-skill' "$output"
+}
+
 @test "check: an invalid line does not contaminate the next valid single-form line" {
   _seed_ext_skill owner/repo skills ext-skill
   printf 'owner/repo:../../evil\nowner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"

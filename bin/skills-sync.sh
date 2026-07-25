@@ -8,7 +8,8 @@
 #       bin/skills-sync.sh --local-only   (ローカル進化のみ反映。ghq 同期と prune を
 #                                          スキップする evolve-gate 承認経路用の軽量モード)
 #       bin/skills-sync.sh --check        (宣言 ↔ symlink の照合のみ。ghq もネットワークも
-#                                          呼ばず副作用ゼロ。欠落があれば exit 1)
+#                                          呼ばず副作用ゼロ。missing / mismatch / invalid の
+#                                          いずれかがあれば exit 1)
 #
 # マニフェスト集合 + ローカル進化集合から外れた symlink は prune する(全量同期時のみ)。
 # 同名 skill が両ソースにある場合は後段のローカル進化が勝つ(意図した優先順位。
@@ -134,6 +135,7 @@ parse_manifest_line() {
 # ghq もネットワークも呼ばず、ファイルも作らない。単体形態(B)は宣言だけから skill 名が
 # 決まるため照合できるが、複数形態(A/C)は subdir 直下の列挙 = clone の実体が要るため
 # 照合できない。黙って落とさず skipped として件数を出す。
+# 判定は missing(symlink でない or SKILL.md 不達)と mismatch(向き先が宣言と別)の 2 段。
 if [[ "$CHECK_ONLY" -eq 1 ]]; then
   [[ -f "$MANIFEST" ]] || {
     echo "manifest not found: $MANIFEST" >&2
@@ -167,12 +169,16 @@ if [[ "$CHECK_ONLY" -eq 1 ]]; then
       missing=$((missing + 1))
       continue
     fi
-    # skill の中身はモデルが読む指示文なので、名前が合っていても向き先が宣言と別なら
-    # 差し替えが成立する。sync 側が張る実体は `<ghq root>/github.com/<spec>/<skillpath>`
-    # なので、末尾一致で照合すれば ghq もネットワークも呼ばずに済む。
+    # sync 側が張る実体は `<ghq root>/github.com/<spec>/<skillpath>`。ghq を呼ばずに
+    # 照合するため末尾一致で見る。**同じ末尾を持つ任意のパスは通る**ので、これは
+    # 宣言の陳腐化・別 owner の同名 skill への取り違えを捕まえるためのもので、
+    # 書込権限を持つ相手による意図的な差し替えは検出できない。
+    # 同名 skill がローカル進化側にもある場合は後段が勝つのが仕様(ヘッダ参照)なので、
+    # その向き先は正常として通す。
     link_target="$(readlink "$SKILLS_DIR/$name")"
     case "$link_target" in
     */github.com/"$spec"/"$skillpath") ;;
+    "$EVOLVE_DIR"/active/skills/"$name") ;;
     *)
       echo "mismatch: $name -> $link_target (宣言: $parsed_line)"
       mismatch=$((mismatch + 1))
