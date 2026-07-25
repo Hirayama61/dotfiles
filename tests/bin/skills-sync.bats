@@ -439,6 +439,30 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   _lacks 'mismatch: ext-skill' "$output"
 }
 
+@test "check: evolution hierarchy symlink is a mismatch, matching full sync" {
+  # active/skills を candidates/skills へ向けると人間ゲート前の候補が効力を持つ。
+  # full sync は全 skip + failed にする状態なので、--check だけ緑にしない。
+  _seed_ext_skill owner/repo skills ext-skill
+  mkdir -p "$EVOLVE/active" "$EVOLVE/candidates/skills/ext-skill"
+  printf '# candidate\n' >"$EVOLVE/candidates/skills/ext-skill/SKILL.md"
+  ln -s "$EVOLVE/candidates/skills" "$EVOLVE/active/skills"
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR"
+  ln -s "$EVOLVE/active/skills/ext-skill" "$SKILLS_DIR/ext-skill"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'mismatch: ext-skill' "$output"
+  _has '階層が symlink' "$output"
+}
+
+@test "check: single-form line with an empty skill path is invalid, not a broken message" {
+  printf 'owner/repo/\n' >"$FAKE_REPO/ext-skills.txt"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'invalid: owner/repo/' "$output"
+  _lacks 'missing:  ' "$output"
+}
+
 @test "check: an invalid line does not contaminate the next valid single-form line" {
   _seed_ext_skill owner/repo skills ext-skill
   printf 'owner/repo:../../evil\nowner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"

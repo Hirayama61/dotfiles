@@ -81,6 +81,20 @@ link_safe() {
   fi
 }
 
+# ローカル進化の親階層に symlink が無いことを確認する(「candidates は効力を持たない」の
+# 実装側担保)。full sync と --check の両方が同じ判定を使う。symlink なら理由を stderr へ
+# 出し 1 を返す。
+evolve_hierarchy_ok() {
+  local d
+  for d in "$EVOLVE_DIR" "$EVOLVE_DIR/active" "$EVOLVE_DIR/active/skills" "$EVOLVE_DIR/active/agents"; do
+    if [[ -L "$d" ]]; then
+      echo "WARN: ローカル進化の階層が symlink のため全 skip: $d" >&2
+      return 1
+    fi
+  done
+  return 0
+}
+
 # manifest 行を 3 形態で解釈し parsed_line / mode / spec / subdir / skillpath を設定する。
 #   A. owner/repo:subdir          コロンあり。subdir 直下を複数 symlink
 #   B. owner/repo/path/to/skill   コロンなし & 3 セグメント以上。1 ディレクトリを単体 symlink
@@ -124,6 +138,10 @@ parse_manifest_line() {
   # manifest はリポ内ファイルで PR 経由の改変がありうる。spec の形式検証(各セグメント
   # 先頭は英数字 = フラグ注入 `-` 始まりと `.` 単独セグメントを排除)で ghq root 外への
   # 脱出を、`..` 拒否で skillpath/subdir のトラバーサルを塞ぐ。
+  # 単体形態で skillpath が空(`owner/repo/`)だと basename が空を返し診断が壊れる。
+  if [[ "$mode" == "single" && -z "$skillpath" ]]; then
+    return 2
+  fi
   if [[ ! "$spec" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$ || "$spec" == *..* ||
     "${skillpath:-}" == *..* || "${subdir:-}" == *..* ]]; then
     return 2
@@ -178,7 +196,14 @@ if [[ "$CHECK_ONLY" -eq 1 ]]; then
     link_target="$(readlink "$SKILLS_DIR/$name")"
     case "$link_target" in
     */github.com/"$spec"/"$skillpath") ;;
-    "$EVOLVE_DIR"/active/skills/"$name") ;;
+    "$EVOLVE_DIR"/active/skills/"$name")
+      # 階層が symlink だと candidates/ 配下へ逃げる。full sync が全 skip にする状態を
+      # --check だけ緑にしない。
+      evolve_hierarchy_ok || {
+        echo "mismatch: $name -> $link_target (ローカル進化の階層が symlink)"
+        mismatch=$((mismatch + 1))
+      }
+      ;;
     *)
       echo "mismatch: $name -> $link_target (宣言: $parsed_line)"
       mismatch=$((mismatch + 1))
@@ -306,14 +331,10 @@ fi
 # (「candidates は効力を持たない」の実装側担保)。名前は evolve の規約 ^[a-z0-9-]+$ に
 # 一致するものだけ link する(evolve-gate の退避 .prev や不正名を有効化しない)。
 evolve_dirs_ok=1
-for d in "$EVOLVE_DIR" "$EVOLVE_DIR/active" "$EVOLVE_DIR/active/skills" "$EVOLVE_DIR/active/agents"; do
-  if [[ -L "$d" ]]; then
-    echo "WARN: ローカル進化の階層が symlink のため全 skip: $d" >&2
-    failed=$((failed + 1))
-    evolve_dirs_ok=0
-    break
-  fi
-done
+if ! evolve_hierarchy_ok; then
+  failed=$((failed + 1))
+  evolve_dirs_ok=0
+fi
 if [[ "$evolve_dirs_ok" -eq 1 ]]; then
   shopt -s nullglob
   for skill in "$EVOLVE_DIR"/active/skills/*/; do
