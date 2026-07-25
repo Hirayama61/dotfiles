@@ -155,18 +155,21 @@ run = "bats --recursive tests"
 description = "shellcheck で git hooks / bin 配下の全シェルスクリプトを検査(hooks は拡張子なしのためパス明示。error レベル)"
 # bin は find で再帰列挙(将来のサブディレクトリも網羅)。-print0|xargs -0 で空集合時は
 # 無起動(literal 渡り fail を回避)、非0 は xargs 経由で mise の set -e に伝播する。
+# bin/demo/ 配下は除外(bin/demo.sh が実行時に生成する追跡外の .pane-*.sh を拾い、
+# demo を走らせたマシンだけ検査対象が CI と食い違うため)。bin/demo.sh 自身は残る。
 run = """
 shellcheck --severity=error home/dot_config/git/hooks/private_executable_pre-commit home/dot_config/git/hooks/private_executable_commit-msg
-find bin -type f -name '*.sh' -print0 | xargs -0 shellcheck --severity=error
+find bin -type f -name '*.sh' -not -path 'bin/demo/*' -print0 | xargs -0 shellcheck --severity=error
 """
 
 [tasks.syntax]
 description = "bash 3.2(macOS 同梱)構文チェック(拡張子なし hook + bin 配下の全シェルスクリプトを find で再帰列挙)"
 # bash -n は先頭ファイル引数のみ検査するため xargs -n1 で 1 ファイルずつ回す。
+# bin/demo/ の除外理由は lint タスクのコメント参照。
 run = """
 /bin/bash -n home/dot_config/git/hooks/private_executable_pre-commit
 /bin/bash -n home/dot_config/git/hooks/private_executable_commit-msg
-find bin -type f -name '*.sh' -print0 | xargs -0 -n1 /bin/bash -n
+find bin -type f -name '*.sh' -not -path 'bin/demo/*' -print0 | xargs -0 -n1 /bin/bash -n
 """
 
 [tasks.check]
