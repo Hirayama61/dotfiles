@@ -107,6 +107,9 @@ evolution_provides() {
   if [[ -L "$d" || -L "$d/SKILL.md" ]]; then
     return 1
   fi
+  # 現状 --check からは到達不能($SKILLS_DIR/<name> 側の -f が同じ実ファイルを先に見る)。
+  # full sync の条件一覧をこの関数へ集約する意図で残す。missing 判定の順序を変えるときは
+  # ここが唯一の砦になる。
   if [[ ! -f "$d/SKILL.md" ]]; then
     return 1
   fi
@@ -123,7 +126,7 @@ evolution_provides() {
 # ghq get の対象はいずれも先頭 2 セグメント owner/repo。
 # 戻り値 0=解釈できた / 1=空行・コメントのみ / 2=不正。
 parse_manifest_line() {
-  local line="$1" slashes owner rest
+  local line="$1" slashes owner rest seg_re
   # 出力用グローバルは、どの return 経路より前に全てリセットする(単体形態は subdir に、
   # 空行は全てに代入しないため、残留値が下の `..` 判定や呼び出し側へ漏れる)。
   mode="multi"
@@ -160,17 +163,25 @@ parse_manifest_line() {
   # manifest はリポ内ファイルで PR 経由の改変がありうる。spec の形式検証(各セグメント
   # 先頭は英数字 = フラグ注入 `-` 始まりと `.` 単独セグメントを排除)で ghq root 外への
   # 脱出を、`..` 拒否で skillpath/subdir のトラバーサルを塞ぐ。
-  # 単体形態で skillpath が空(`owner/repo/`)だと basename が空を返し診断が壊れる。
-  # 複数形態で subdir が空(`owner/repo:`)だと src_root が repo ルートになり、
-  # 宣言者が意図していない repo 直下の全ディレクトリを走査する。
+  # 単体形態は skillpath、複数形態は subdir を必ず持つ。
   if [[ "$mode" == "single" && -z "$skillpath" ]]; then
     return 2
   fi
   if [[ "$mode" != "single" && -z "${subdir:-}" ]]; then
     return 2
   fi
-  if [[ ! "$spec" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$ || "$spec" == *..* ||
-    "${skillpath:-}" == *..* || "${subdir:-}" == *..* ]]; then
+  # manifest はリポ内ファイルで PR 経由の改変がありうる。3 つとも同じ字種で検証する
+  # (各セグメント先頭は英数字)。`..` の否定だけでは、`.` 単独セグメントと空セグメント
+  # (`//`)が通って subdir/skillpath が repo ルートへ戻り、宣言者が意図しない
+  # repo 直下の全ディレクトリを走査する。
+  seg_re='^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$'
+  if [[ ! "$spec" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$ || "$spec" == *..* ]]; then
+    return 2
+  fi
+  if [[ -n "${skillpath:-}" && ! "$skillpath" =~ $seg_re ]]; then
+    return 2
+  fi
+  if [[ -n "${subdir:-}" && ! "$subdir" =~ $seg_re ]]; then
     return 2
   fi
   return 0
@@ -358,13 +369,10 @@ fi
 # symlink 経由で candidates/ が効力を持つ経路を、エントリ単位 + 親階層の両方で塞ぐ
 # (「candidates は効力を持たない」の実装側担保)。名前は evolve の規約 ^[a-z0-9-]+$ に
 # 一致するものだけ link する(evolve-gate の退避 .prev や不正名を有効化しない)。
-evolve_dirs_ok=1
 if ! evolve_hierarchy_ok; then
   echo "WARN: ローカル進化の階層が symlink のため全 skip: $evolve_symlink_path" >&2
   failed=$((failed + 1))
-  evolve_dirs_ok=0
-fi
-if [[ "$evolve_dirs_ok" -eq 1 ]]; then
+else
   shopt -s nullglob
   for skill in "$EVOLVE_DIR"/active/skills/*/; do
     [[ -L "${skill%/}" || -L "$skill/SKILL.md" ]] && continue

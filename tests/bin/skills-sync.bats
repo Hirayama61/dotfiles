@@ -451,7 +451,10 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   ln -s "$EVOLVE/active/skills/ext-skill" "$SKILLS_DIR/ext-skill"
   run "$SYNC" --check
   [ "$status" -eq 1 ]
+  # 理由側を positive に固定する(mismatch の語だけだと、例外 case を丸ごと消した変異が
+  # `*)` へ落ちて同じ語を出すため素通りする)。
   _has 'mismatch: ext-skill' "$output"
+  _has 'ローカル進化から link される状態にない' "$output"
   # --check は何も skip しないので、full sync 用の「全 skip」WARN は出さない。
   _lacks '全 skip' "$output"
 }
@@ -485,17 +488,48 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   _has 'missing: ext-skill' "$output"
 }
 
-@test "full: multi-form line with an empty subdir is invalid, not a repo-root sweep" {
-  # `owner/repo:` は src_root が repo ルートになり、宣言者が意図していない直下の
-  # 全ディレクトリを link しうる。invalid として止める。
+@test "full: subdir forms that resolve back to the repo root are invalid, not a sweep" {
+  # src_root が repo ルートに戻る形は、宣言者が意図していない直下の全ディレクトリを
+  # link しうる。空文字列だけを弾いても `.` `/` `//` で迂回できるため、宣言 1 個ではなく
+  # 代表形をまとめて固定する。
   _seed_ext_skill owner/repo skills good
   mkdir -p "$FAKE_GHQ_ROOT/github.com/owner/repo/secret-dir"
   printf '# secret\n' >"$FAKE_GHQ_ROOT/github.com/owner/repo/secret-dir/SKILL.md"
-  printf 'owner/repo:\n' >"$FAKE_REPO/ext-skills.txt"
-  run "$SYNC"
+  local form
+  for form in 'owner/repo:' 'owner/repo:.' 'owner/repo:/' 'owner/repo:./' 'owner/repo:.//'; do
+    rm -rf "$SKILLS_DIR"
+    printf '%s\n' "$form" >"$FAKE_REPO/ext-skills.txt"
+    run "$SYNC"
+    [ "$status" -eq 1 ]
+    _has '不正な manifest 行' "$output"
+    [ ! -e "$SKILLS_DIR/secret-dir" ]
+  done
+}
+
+@test "full: a dot segment in a single-form skill path is invalid" {
+  # `owner/repo/skills/.` は skillpath が非空なので空ガードを通り抜け、basename が `.` に
+  # なって診断が読めなくなる。
+  _seed_ext_skill owner/repo skills good
+  printf 'owner/repo/skills/.\n' >"$FAKE_REPO/ext-skills.txt"
+  run "$SYNC" --check
   [ "$status" -eq 1 ]
-  _has '不正な manifest 行' "$output"
-  [ ! -e "$SKILLS_DIR/secret-dir" ]
+  _has 'invalid: owner/repo/skills/.' "$output"
+  _lacks 'missing: .' "$output"
+}
+
+@test "check: an evolution entry whose name breaks the evolve naming rule is a mismatch" {
+  # full sync は名前規約外(^[a-z0-9-]+$)のエントリを WARN + skip する。--check の例外も
+  # 同じ条件で落ちること = evolution_provides の名前判定が生きていることを固定する。
+  _seed_ext_skill owner/repo skills Ext_Skill
+  mkdir -p "$EVOLVE/active/skills/Ext_Skill" "$EVOLVE/active/agents"
+  printf '# evo\n' >"$EVOLVE/active/skills/Ext_Skill/SKILL.md"
+  printf 'owner/repo/skills/Ext_Skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR"
+  ln -s "$EVOLVE/active/skills/Ext_Skill" "$SKILLS_DIR/Ext_Skill"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'mismatch: Ext_Skill' "$output"
+  _has 'ローカル進化から link される状態にない' "$output"
 }
 
 @test "check: single-form line with an empty skill path is invalid, not a broken message" {
