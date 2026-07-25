@@ -144,8 +144,8 @@ mise run skills:sync   # ext-skills.txt を読み ghq clone/更新 → ~/.claude
 
 - `ext-skills.txt` は 1 行 1 skill。3 形態(`owner/repo:subdir` / `owner/repo/path/to/skill` / `owner/repo`)で複数 or 単体 skill を解釈する(記法はファイル冒頭コメント参照)。
 - `bin/skills-sync.sh` が `ghq get -u` で取得し `~/.claude/skills/<name>` へ symlink。マニフェストから外れた symlink は prune する(chezmoi 管理の実体ディレクトリには触れない)。
-- `bin/skills-sync.sh --check` は宣言 ↔ symlink の照合だけを行う(ghq もネットワークも呼ばず副作用ゼロ。欠落があれば exit 1)。単体形態(`owner/repo/path/to/skill`)は宣言だけで skill 名が決まるため照合できるが、複数形態(`owner/repo` / `owner/repo:subdir`)は clone の列挙が要るため `skipped` として件数だけ出す。
-- 同期の末尾サマリー `unmanaged=<n>` は、`~/.claude/skills`・`~/.claude/agents` にあって symlink でも chezmoi ソース由来でもない実体の件数。報告のみで削除はしない。
+- `bin/skills-sync.sh --check` は宣言 ↔ symlink の照合だけを行う(ghq もネットワークも呼ばず副作用ゼロ。`missing` / `mismatch` / `invalid` のいずれかがあれば exit 1)。skill 名の存在だけでなく **symlink の向き先が宣言どおりか**まで見る(`readlink` の末尾を `github.com/<owner/repo>/<path>` と照合する。向き先の差し替えは、モデルが読む指示文の差し替えそのものになるため)。単体形態(`owner/repo/path/to/skill`)は宣言だけで skill 名が決まるため照合できるが、複数形態(`owner/repo` / `owner/repo:subdir`)は clone の列挙が要るため `skipped` として件数だけ出す。
+- 同期の末尾サマリー `unmanaged=<n>` は、`~/.claude/skills`・`~/.claude/agents` にあって symlink でも chezmoi ソース由来でもない実体の件数。報告のみで削除はしない。cc-dotfiles が未 clone のときは検出自体を行わず `unmanaged=skipped(...)` と出す(「検査して 0 件」と区別するため)。**手で張った symlink はこの件数に入らず、prune の対象として `pruned:` に出る**。
 - symlink は再配布ではない(本体は ghq clone でローカルに置く)ため LICENSE 同梱不要。
 - `~/.claude/skills/` には cc-dotfiles が実体管理する skill(`obsidian-memory` 等)と ext-skills 経由 symlink の skill が混在する。**外部 skill は vendoring せず symlink** が原則(例: `empirical-prompt-tuning` は `mizchi/skills` から取り込む)。
 

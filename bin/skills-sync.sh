@@ -36,6 +36,10 @@ CC_DOTFILES_DIR="${CC_DOTFILES_DIR:-$HOME/ghq/github.com/Hirayama61/cc-dotfiles}
 
 LOCAL_ONLY=0
 CHECK_ONLY=0
+if [[ $# -gt 1 ]]; then
+  echo "Usage: $0 [--local-only | --check]" >&2
+  exit 1
+fi
 case "${1:-}" in
 "") ;;
 --local-only) LOCAL_ONLY=1 ;;
@@ -54,6 +58,7 @@ linked=0
 pruned=0
 failed=0
 unmanaged=0
+unmanaged_display=""
 
 # 衝突ガード付き symlink 作成。宛先が実体(非 symlink)なら chezmoi 管理の疑いとして
 # WARN + failed 計上で skip する(呼び出し側は `|| continue`)。ln 失敗も failed に
@@ -91,8 +96,11 @@ parse_manifest_line() {
   parsed_line="$line"
   [[ -z "$line" ]] && return 1
 
+  # 出力用グローバルは全て毎回リセットする(単体形態は subdir に代入しないため、
+  # 残留値が下の `..` 判定へ混入して後続行を誤って invalid にする)。
   mode="multi"
   skillpath=""
+  subdir=""
   if [[ "$line" == *:* ]]; then
     spec="${line%%:*}"
     subdir="${line#*:}"
@@ -133,6 +141,7 @@ if [[ "$CHECK_ONLY" -eq 1 ]]; then
   }
   checked=0
   missing=0
+  mismatch=0
   invalid=0
   skipped=0
   while IFS= read -r line || [[ -n "$line" ]]; do
@@ -141,26 +150,39 @@ if [[ "$CHECK_ONLY" -eq 1 ]]; then
     case "$rc" in
     1) continue ;;
     2)
-      echo "invalid: $parsed_line" >&2
+      echo "invalid: $parsed_line"
       invalid=$((invalid + 1))
       continue
       ;;
     esac
     if [[ "$mode" != "single" ]]; then
-      echo "skipped: $parsed_line (複数 skill 宣言は clone の列挙が要るため照合対象外)" >&2
+      echo "skipped: $parsed_line (複数 skill 宣言は clone の列挙が要るため照合対象外)"
       skipped=$((skipped + 1))
       continue
     fi
     name="$(basename "$skillpath")"
     checked=$((checked + 1))
-    [[ -L "$SKILLS_DIR/$name" && -f "$SKILLS_DIR/$name/SKILL.md" ]] && continue
-    echo "missing: $name ($parsed_line)"
-    missing=$((missing + 1))
+    if [[ ! -L "$SKILLS_DIR/$name" || ! -f "$SKILLS_DIR/$name/SKILL.md" ]]; then
+      echo "missing: $name ($parsed_line)"
+      missing=$((missing + 1))
+      continue
+    fi
+    # skill の中身はモデルが読む指示文なので、名前が合っていても向き先が宣言と別なら
+    # 差し替えが成立する。sync 側が張る実体は `<ghq root>/github.com/<spec>/<skillpath>`
+    # なので、末尾一致で照合すれば ghq もネットワークも呼ばずに済む。
+    link_target="$(readlink "$SKILLS_DIR/$name")"
+    case "$link_target" in
+    */github.com/"$spec"/"$skillpath") ;;
+    *)
+      echo "mismatch: $name -> $link_target (宣言: $parsed_line)"
+      mismatch=$((mismatch + 1))
+      ;;
+    esac
   done <"$MANIFEST"
 
   echo
-  echo "skills:sync --check 完了 — checked=$checked missing=$missing invalid=$invalid skipped=$skipped (skills dir: $SKILLS_DIR)"
-  [[ "$missing" -gt 0 || "$invalid" -gt 0 ]] && exit 1
+  echo "skills:sync --check 完了 — checked=$checked missing=$missing mismatch=$mismatch invalid=$invalid skipped=$skipped (skills dir: $SKILLS_DIR)"
+  [[ "$missing" -gt 0 || "$mismatch" -gt 0 || "$invalid" -gt 0 ]] && exit 1
   exit 0
 fi
 
@@ -360,6 +382,8 @@ fi
 # prune は symlink だけを対象にするため、手で置かれた実体は誰の管轄にも入らない。
 # ここでは削除も prune 対象の拡大もせず WARN で可視化するだけに留める。failed には
 # 計上しない(prune 抑止を誘発する)。exit code も変えない。
+# 突合は chezmoi の source name と target name が一致する前提に立つ。属性 prefix
+# (private_ / exact_ 等)や .tmpl が付いたエントリは誤って管理外と報告される。
 if [[ -d "$CC_DOTFILES_DIR" ]]; then
   cc_claude="$CC_DOTFILES_DIR/home/dot_claude"
   for entry in "$SKILLS_DIR"/*; do
@@ -378,10 +402,15 @@ if [[ -d "$CC_DOTFILES_DIR" ]]; then
       unmanaged=$((unmanaged + 1))
     done
   fi
+else
+  # cc-dotfiles 未 clone は正規の状態(mise.toml の apply:cc-dotfiles も skip する)。
+  # 数値のまま 0 を出すと「検査して 0 件」と区別が付かない。
+  unmanaged_display="skipped(chezmoi ソース不在: $CC_DOTFILES_DIR)"
+  echo "NOTE: chezmoi ソース不在のため管理外検出をスキップしました: $CC_DOTFILES_DIR" >&2
 fi
 
 echo
-echo "skills:sync 完了 — linked=$linked pruned=$pruned failed=$failed unmanaged=$unmanaged (skills dir: $SKILLS_DIR)"
+echo "skills:sync 完了 — linked=$linked pruned=$pruned failed=$failed unmanaged=${unmanaged_display:-$unmanaged} (skills dir: $SKILLS_DIR)"
 
 [[ "$failed" -gt 0 ]] && exit 1
 exit 0

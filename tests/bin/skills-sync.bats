@@ -89,7 +89,7 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
 @test "local-only: evolution dir absent is normal (exit 0, no links)" {
   run "$SYNC" --local-only
   [ "$status" -eq 0 ]
-  [[ "$output" == *"linked=0"* ]]
+  _has 'linked=0' "$output"
 }
 
 @test "local-only: links active skill into ~/.claude/skills" {
@@ -113,7 +113,7 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   _seed_active_skill self-review
   run "$SYNC" --local-only
   [ "$status" -eq 1 ]
-  [[ "$output" == *"WARN"* ]]
+  _has 'WARN' "$output"
   [ ! -L "$SKILLS_DIR/self-review" ]
   [ "$(cat "$SKILLS_DIR/self-review/SKILL.md")" = "real" ]
 }
@@ -193,7 +193,7 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   ln -s "$EVOLVE/candidates/skills" "$EVOLVE/active/skills"
   run "$SYNC" --local-only
   [ "$status" -eq 1 ]
-  [[ "$output" == *"階層が symlink"* ]]
+  _has '階層が symlink' "$output"
   [ ! -e "$SKILLS_DIR/sneaky" ]
 }
 
@@ -211,7 +211,7 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   printf -- '-shallow/repo\n' >"$FAKE_REPO/ext-skills.txt"
   run "$SYNC"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"不正な manifest 行"* ]]
+  _has '不正な manifest 行' "$output"
 }
 
 @test "full: manifest line with traversal is rejected (WARN + no link, prune suppressed)" {
@@ -220,7 +220,7 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   ln -s "$BATS_TEST_TMPDIR/keep" "$SKILLS_DIR/keep-me"
   run "$SYNC"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"不正な manifest 行"* ]]
+  _has '不正な manifest 行' "$output"
   [ -L "$SKILLS_DIR/keep-me" ]
 }
 
@@ -242,7 +242,7 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   printf 'owner/repo:skills2\n' >"$FAKE_REPO/ext-skills.txt"
   run "$SYNC"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"repo 外を指す skill"* ]]
+  _has 'repo 外を指す skill' "$output"
   [ ! -e "$SKILLS_DIR/ext-skill" ]
 }
 
@@ -266,7 +266,7 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   ln -s "$BATS_TEST_TMPDIR/keep" "$SKILLS_DIR/keep-me"
   run "$SYNC"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"prune を抑止"* ]]
+  _has 'prune を抑止' "$output"
   [ -L "$SKILLS_DIR/keep-me" ]
 }
 
@@ -315,12 +315,15 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
 }
 
 @test "unmanaged: detection is skipped when cc-dotfiles source is absent" {
+  # 未 clone は正規の状態。数値 0 を出すと「検査して 0 件」と区別が付かないため、
+  # スキップしたことがサマリーから読み取れることを固定する。
   mkdir -p "$SKILLS_DIR/hand-placed"
   printf 'real\n' >"$SKILLS_DIR/hand-placed/SKILL.md"
   run "$SYNC"
   [ "$status" -eq 0 ]
-  _has 'unmanaged=0' "$output"
-  _lacks '管理外' "$output"
+  _has 'unmanaged=skipped(' "$output"
+  _lacks 'unmanaged=0' "$output"
+  _lacks 'WARN: 管理外' "$output"
 }
 
 @test "unmanaged: presence changes neither prune count nor exit code" {
@@ -405,8 +408,43 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   _has 'invalid: -shallow/repo' "$output"
 }
 
+@test "check: symlink pointing outside the declared repo is a mismatch, not green" {
+  # skill の中身はモデルが読む指示文なので、名前が合っていても向き先が別なら差し替えが
+  # 成立する。存在確認だけで緑にしないことを固定する。
+  _seed_ext_skill owner/repo skills ext-skill
+  mkdir -p "$BATS_TEST_TMPDIR/attacker/ext-skill"
+  printf '# other\n' >"$BATS_TEST_TMPDIR/attacker/ext-skill/SKILL.md"
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR"
+  ln -s "$BATS_TEST_TMPDIR/attacker/ext-skill" "$SKILLS_DIR/ext-skill"
+  _trace_ghq
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'mismatch: ext-skill' "$output"
+  _has 'missing=0 mismatch=1' "$output"
+  [ ! -e "$GHQ_TRACE" ]
+}
+
+@test "check: an invalid line does not contaminate the next valid single-form line" {
+  _seed_ext_skill owner/repo skills ext-skill
+  printf 'owner/repo:../../evil\nowner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR"
+  ln -s "$FAKE_GHQ_ROOT/github.com/owner/repo/skills/ext-skill" "$SKILLS_DIR/ext-skill"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'invalid: owner/repo:../../evil' "$output"
+  _lacks 'invalid: owner/repo/skills/ext-skill' "$output"
+  _has 'checked=1 missing=0 mismatch=0 invalid=1' "$output"
+}
+
 @test "rejects unknown flag" {
   run "$SYNC" --nonsense
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Usage"* ]]
+  _has 'Usage' "$output"
+}
+
+@test "rejects more than one flag instead of silently honouring the first" {
+  run "$SYNC" --check --local-only
+  [ "$status" -eq 1 ]
+  _has 'Usage' "$output"
 }
