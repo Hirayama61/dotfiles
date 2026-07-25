@@ -455,6 +455,8 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   # `*)` へ落ちて同じ語を出すため素通りする)。
   _has 'mismatch: ext-skill' "$output"
   _has 'ローカル進化から link される状態にない' "$output"
+  # 攻撃の兆候そのものなので、どの階層が symlink かを診断に出す。
+  _has "階層が symlink $EVOLVE/active/skills" "$output"
   # --check は何も skip しないので、full sync 用の「全 skip」WARN は出さない。
   _lacks '全 skip' "$output"
 }
@@ -504,6 +506,16 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
     _has '不正な manifest 行' "$output"
     [ ! -e "$SKILLS_DIR/secret-dir" ]
   done
+}
+
+@test "full: a trailing slash on subdir is accepted, same as on a single-form path" {
+  # 単体形態は skillpath の末尾スラッシュを剥ぐので `owner/repo/skills/x/` が通る。
+  # subdir 側だけ剥がずに invalid にすると、説明のつかない非対称になる。
+  _seed_ext_skill owner/repo skills ext-skill
+  printf 'owner/repo:skills/\n' >"$FAKE_REPO/ext-skills.txt"
+  run "$SYNC"
+  [ "$status" -eq 0 ]
+  [ -L "$SKILLS_DIR/ext-skill" ]
 }
 
 @test "full: a dot segment in a single-form skill path is invalid" {

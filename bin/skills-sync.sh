@@ -144,6 +144,7 @@ parse_manifest_line() {
   if [[ "$line" == *:* ]]; then
     spec="${line%%:*}"
     subdir="${line#*:}"
+    subdir="${subdir%/}"
   else
     # スラッシュ以外を除去して区切り数を数える(連想配列不要の bash 3.2 互換)。
     slashes="${line//[!\/]/}"
@@ -160,29 +161,24 @@ parse_manifest_line() {
     fi
   fi
 
-  # manifest はリポ内ファイルで PR 経由の改変がありうる。spec の形式検証(各セグメント
-  # 先頭は英数字 = フラグ注入 `-` 始まりと `.` 単独セグメントを排除)で ghq root 外への
-  # 脱出を、`..` 拒否で skillpath/subdir のトラバーサルを塞ぐ。
-  # 単体形態は skillpath、複数形態は subdir を必ず持つ。
-  if [[ "$mode" == "single" && -z "$skillpath" ]]; then
-    return 2
-  fi
-  if [[ "$mode" != "single" && -z "${subdir:-}" ]]; then
-    return 2
-  fi
   # manifest はリポ内ファイルで PR 経由の改変がありうる。3 つとも同じ字種で検証する
-  # (各セグメント先頭は英数字)。`..` の否定だけでは、`.` 単独セグメントと空セグメント
-  # (`//`)が通って subdir/skillpath が repo ルートへ戻り、宣言者が意図しない
-  # repo 直下の全ディレクトリを走査する。
+  # (各セグメント先頭は英数字)。これで ghq root 外への脱出(`-` 始まりのフラグ注入)、
+  # `..` を含むセグメント、`.` 単独セグメント、空セグメント(`//`)、空文字列が一括で落ちる。
+  # 空だけを別判定に切り出さない — その判定が漏れると字種側が素通りし、subdir/skillpath が
+  # repo ルートへ戻って宣言者が意図しない repo 直下の全ディレクトリを走査する。
+  # `=~` の右辺は非引用にする(bash 3.2 は引用するとリテラル比較になり検証が無効化する)。
   seg_re='^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$'
   if [[ ! "$spec" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$ || "$spec" == *..* ]]; then
     return 2
   fi
-  if [[ -n "${skillpath:-}" && ! "$skillpath" =~ $seg_re ]]; then
-    return 2
-  fi
-  if [[ -n "${subdir:-}" && ! "$subdir" =~ $seg_re ]]; then
-    return 2
+  if [[ "$mode" == "single" ]]; then
+    if [[ ! "$skillpath" =~ $seg_re ]]; then
+      return 2
+    fi
+  else
+    if [[ ! "$subdir" =~ $seg_re ]]; then
+      return 2
+    fi
   fi
   return 0
 }
@@ -239,7 +235,12 @@ if [[ "$CHECK_ONLY" -eq 1 ]]; then
       # 条件を満たさない向き先は、宣言された ext-skill が正しく張られていない状態なので
       # mismatch を出す(判定不能を緑に倒さない)。条件の正典は下の ソース 2 のループ。
       if ! evolution_provides "$name"; then
-        echo "mismatch: $name -> $link_target (ローカル進化から link される状態にない)"
+        reason="ローカル進化から link される状態にない"
+        # 階層 symlink は candidates を効かせる兆候そのもの。どこが symlink かを出す。
+        if [[ -n "${evolve_symlink_path:-}" ]]; then
+          reason="$reason: 階層が symlink $evolve_symlink_path"
+        fi
+        echo "mismatch: $name -> $link_target ($reason)"
         mismatch=$((mismatch + 1))
       fi
       ;;
