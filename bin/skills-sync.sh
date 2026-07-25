@@ -95,6 +95,26 @@ evolve_hierarchy_ok() {
   return 0
 }
 
+# full sync がこの名前をローカル進化から link する条件。--check の例外が同じ判定を使う
+# (条件が食い違うと、full sync が link しない状態を --check が正常と報告する)。
+# `[[ ]]` の失敗は bash 3.2 の set -e で伝播しないため、判定は必ず if で書く。
+evolution_provides() {
+  local name="$1" d="$EVOLVE_DIR/active/skills/$1"
+  if ! evolve_hierarchy_ok; then
+    return 1
+  fi
+  if [[ -L "$d" || -L "$d/SKILL.md" ]]; then
+    return 1
+  fi
+  if [[ ! -f "$d/SKILL.md" ]]; then
+    return 1
+  fi
+  if [[ ! "$name" =~ ^[a-z0-9-]+$ ]]; then
+    return 1
+  fi
+  return 0
+}
+
 # manifest 行を 3 形態で解釈し parsed_line / mode / spec / subdir / skillpath を設定する。
 #   A. owner/repo:subdir          コロンあり。subdir 直下を複数 symlink
 #   B. owner/repo/path/to/skill   コロンなし & 3 セグメント以上。1 ディレクトリを単体 symlink
@@ -197,12 +217,13 @@ if [[ "$CHECK_ONLY" -eq 1 ]]; then
     case "$link_target" in
     */github.com/"$spec"/"$skillpath") ;;
     "$EVOLVE_DIR"/active/skills/"$name")
-      # 階層が symlink だと candidates/ 配下へ逃げる。full sync が全 skip にする状態を
-      # --check だけ緑にしない。
-      evolve_hierarchy_ok || {
-        echo "mismatch: $name -> $link_target (ローカル進化の階層が symlink)"
+      # この例外は「full sync がこの名前をローカル進化から link する」ときだけ成立する。
+      # 条件を満たさない向き先は、宣言された ext-skill が正しく張られていない状態なので
+      # mismatch を出す(判定不能を緑に倒さない)。条件の正典は下の ソース 2 のループ。
+      if ! evolution_provides "$name"; then
+        echo "mismatch: $name -> $link_target (ローカル進化から link される状態にない)"
         mismatch=$((mismatch + 1))
-      }
+      fi
       ;;
     *)
       echo "mismatch: $name -> $link_target (宣言: $parsed_line)"

@@ -455,6 +455,35 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   _has '階層が symlink' "$output"
 }
 
+@test "check: evolution entry that is itself a symlink is a mismatch" {
+  # 階層 4 つが実体でも、エントリ自体を candidates へ向ければ同じ迂回になる。
+  # full sync はこのエントリを link しない(ソース 2 のループが -L で skip する)。
+  _seed_ext_skill owner/repo skills ext-skill
+  mkdir -p "$EVOLVE/active/skills" "$EVOLVE/active/agents" "$EVOLVE/candidates/skills/ext-skill"
+  printf '# candidate\n' >"$EVOLVE/candidates/skills/ext-skill/SKILL.md"
+  ln -s "$EVOLVE/candidates/skills/ext-skill" "$EVOLVE/active/skills/ext-skill"
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR"
+  ln -s "$EVOLVE/active/skills/ext-skill" "$SKILLS_DIR/ext-skill"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'mismatch: ext-skill' "$output"
+}
+
+@test "check: evolution entry without SKILL.md is reported (as missing, before mismatch)" {
+  # full sync は SKILL.md 不在のエントリを link しない。--check も緑にしないこと。
+  # 到達するのは手前の missing 判定(SKILL.md がリンク越しに引けない)で、mismatch では
+  # ないため、どちらの語で出るかまで固定する。
+  _seed_ext_skill owner/repo skills ext-skill
+  mkdir -p "$EVOLVE/active/skills/ext-skill" "$EVOLVE/active/agents"
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR"
+  ln -s "$EVOLVE/active/skills/ext-skill" "$SKILLS_DIR/ext-skill"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'missing: ext-skill' "$output"
+}
+
 @test "check: single-form line with an empty skill path is invalid, not a broken message" {
   printf 'owner/repo/\n' >"$FAKE_REPO/ext-skills.txt"
   run "$SYNC" --check
