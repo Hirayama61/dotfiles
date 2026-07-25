@@ -86,9 +86,10 @@ link_safe() {
 # 出し 1 を返す。
 evolve_hierarchy_ok() {
   local d
+  evolve_symlink_path=""
   for d in "$EVOLVE_DIR" "$EVOLVE_DIR/active" "$EVOLVE_DIR/active/skills" "$EVOLVE_DIR/active/agents"; do
     if [[ -L "$d" ]]; then
-      echo "WARN: ローカル進化の階層が symlink のため全 skip: $d" >&2
+      evolve_symlink_path="$d"
       return 1
     fi
   done
@@ -159,7 +160,12 @@ parse_manifest_line() {
   # 先頭は英数字 = フラグ注入 `-` 始まりと `.` 単独セグメントを排除)で ghq root 外への
   # 脱出を、`..` 拒否で skillpath/subdir のトラバーサルを塞ぐ。
   # 単体形態で skillpath が空(`owner/repo/`)だと basename が空を返し診断が壊れる。
+  # 複数形態で subdir が空(`owner/repo:`)だと src_root が repo ルートになり、
+  # 宣言者が意図していない repo 直下の全ディレクトリを走査する。
   if [[ "$mode" == "single" && -z "$skillpath" ]]; then
+    return 2
+  fi
+  if [[ "$mode" != "single" && -z "${subdir:-}" ]]; then
     return 2
   fi
   if [[ ! "$spec" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$ || "$spec" == *..* ||
@@ -353,6 +359,7 @@ fi
 # 一致するものだけ link する(evolve-gate の退避 .prev や不正名を有効化しない)。
 evolve_dirs_ok=1
 if ! evolve_hierarchy_ok; then
+  echo "WARN: ローカル進化の階層が symlink のため全 skip: $evolve_symlink_path" >&2
   failed=$((failed + 1))
   evolve_dirs_ok=0
 fi

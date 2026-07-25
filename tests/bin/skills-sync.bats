@@ -452,7 +452,8 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   run "$SYNC" --check
   [ "$status" -eq 1 ]
   _has 'mismatch: ext-skill' "$output"
-  _has '階層が symlink' "$output"
+  # --check は何も skip しないので、full sync 用の「全 skip」WARN は出さない。
+  _lacks '全 skip' "$output"
 }
 
 @test "check: evolution entry that is itself a symlink is a mismatch" {
@@ -482,6 +483,19 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   run "$SYNC" --check
   [ "$status" -eq 1 ]
   _has 'missing: ext-skill' "$output"
+}
+
+@test "full: multi-form line with an empty subdir is invalid, not a repo-root sweep" {
+  # `owner/repo:` は src_root が repo ルートになり、宣言者が意図していない直下の
+  # 全ディレクトリを link しうる。invalid として止める。
+  _seed_ext_skill owner/repo skills good
+  mkdir -p "$FAKE_GHQ_ROOT/github.com/owner/repo/secret-dir"
+  printf '# secret\n' >"$FAKE_GHQ_ROOT/github.com/owner/repo/secret-dir/SKILL.md"
+  printf 'owner/repo:\n' >"$FAKE_REPO/ext-skills.txt"
+  run "$SYNC"
+  [ "$status" -eq 1 ]
+  _has '不正な manifest 行' "$output"
+  [ ! -e "$SKILLS_DIR/secret-dir" ]
 }
 
 @test "check: single-form line with an empty skill path is invalid, not a broken message" {
