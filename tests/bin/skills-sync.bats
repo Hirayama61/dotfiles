@@ -10,6 +10,7 @@
 #   - --local-only(ghq 同期・prune の全スキップ)
 #   - prune の非破壊条件(failed>0 / --local-only で抑止)
 #   - 管理外エントリの検出(報告のみ。削除も exit code 変更もしない)
+#   - --check(宣言 ↔ symlink の照合。ghq 非呼出・副作用ゼロ・欠落で exit 1)
 
 setup() {
   export TEST_HOME="$BATS_TEST_TMPDIR/home"
@@ -38,6 +39,8 @@ esac
 SH
   chmod +x "$shim/ghq"
   export PATH="$shim:$PATH"
+  export GHQ_TRACE="$BATS_TEST_TMPDIR/ghq-called"
+  SHIM_DIR="$shim"
 
   # chezmoi ソース(cc-dotfiles)も一時側へ向ける。既定では作らない = 実 repo を見に
   # 行かせないまま「repo 不在」経路になる。
@@ -52,6 +55,21 @@ SH
 }
 
 _seed_cc_source() { mkdir -p "$CC_SKILLS" "$CC_AGENTS"; }
+
+# 出力照合。macOS 同梱の bash 3.2 は set -e で [[ ]] の失敗を無視するため、末尾以外に
+# 置いた [[ ]] アサーションは空振りする。関数呼び出しなら失敗が伝播する。
+_has() { case "$2" in *"$1"*) return 0 ;; *) return 1 ;; esac; }
+_lacks() { case "$2" in *"$1"*) return 1 ;; *) return 0 ;; esac; }
+
+# ghq が呼ばれたら $GHQ_TRACE に痕跡を残す shim へ差し替える(--check の非呼出検証用)。
+_trace_ghq() {
+  cat >"$SHIM_DIR/ghq" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$GHQ_TRACE"
+exit 0
+SH
+  chmod +x "$SHIM_DIR/ghq"
+}
 
 _seed_active_skill() {
   mkdir -p "$EVOLVE/active/skills/$1"
@@ -320,6 +338,71 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   [ "$status" -eq 0 ]
   [[ "$output" == *"pruned=1"* ]]
   [[ "$output" == *"unmanaged=1"* ]]
+}
+
+@test "check: declared symlink in place -> exit 0 without calling ghq" {
+  _seed_ext_skill owner/repo skills ext-skill
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR"
+  ln -s "$FAKE_GHQ_ROOT/github.com/owner/repo/skills/ext-skill" "$SKILLS_DIR/ext-skill"
+  _trace_ghq
+  run "$SYNC" --check
+  [ "$status" -eq 0 ]
+  _has 'checked=1 missing=0' "$output"
+  [ ! -e "$GHQ_TRACE" ]
+}
+
+@test "check: missing symlink -> exit 1 naming the skill, without calling ghq" {
+  _seed_ext_skill owner/repo skills ext-skill
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  _trace_ghq
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'missing: ext-skill' "$output"
+  [ ! -e "$GHQ_TRACE" ]
+}
+
+@test "check: dangling symlink counts as missing" {
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR"
+  ln -s "$BATS_TEST_TMPDIR/gone/ext-skill" "$SKILLS_DIR/ext-skill"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'missing: ext-skill' "$output"
+}
+
+@test "check: creates nothing and prunes nothing" {
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR" "$BATS_TEST_TMPDIR/stale"
+  ln -s "$BATS_TEST_TMPDIR/stale" "$SKILLS_DIR/stale-skill"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  [ -L "$SKILLS_DIR/stale-skill" ]
+  [ ! -e "$AGENTS_DIR" ]
+}
+
+@test "check: does not create the skills dir when it is absent" {
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  [ ! -e "$SKILLS_DIR" ]
+}
+
+@test "check: multi-form declarations are counted as skipped, not silently ignored" {
+  printf 'owner/repo\n' >"$FAKE_REPO/ext-skills.txt"
+  _trace_ghq
+  run "$SYNC" --check
+  [ "$status" -eq 0 ]
+  _has 'checked=0' "$output"
+  _has 'skipped=1' "$output"
+  [ ! -e "$GHQ_TRACE" ]
+}
+
+@test "check: invalid manifest line is reported and exits 1" {
+  printf -- '-shallow/repo\n' >"$FAKE_REPO/ext-skills.txt"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'invalid: -shallow/repo' "$output"
 }
 
 @test "rejects unknown flag" {

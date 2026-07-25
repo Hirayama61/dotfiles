@@ -7,6 +7,8 @@
 # 実行: mise run skills:sync
 #       bin/skills-sync.sh --local-only   (ローカル進化のみ反映。ghq 同期と prune を
 #                                          スキップする evolve-gate 承認経路用の軽量モード)
+#       bin/skills-sync.sh --check        (宣言 ↔ symlink の照合のみ。ghq もネットワークも
+#                                          呼ばず副作用ゼロ。欠落があれば exit 1)
 #
 # マニフェスト集合 + ローカル進化集合から外れた symlink は prune する(全量同期時のみ)。
 # 同名 skill が両ソースにある場合は後段のローカル進化が勝つ(意図した優先順位。
@@ -33,14 +35,16 @@ MANIFEST="$(cd "$(dirname "$0")/.." && pwd)/ext-skills.txt"
 CC_DOTFILES_DIR="${CC_DOTFILES_DIR:-$HOME/ghq/github.com/Hirayama61/cc-dotfiles}"
 
 LOCAL_ONLY=0
-if [[ "${1:-}" == "--local-only" ]]; then
-  LOCAL_ONLY=1
-elif [[ $# -gt 0 ]]; then
-  echo "Usage: $0 [--local-only]" >&2
+CHECK_ONLY=0
+case "${1:-}" in
+"") ;;
+--local-only) LOCAL_ONLY=1 ;;
+--check) CHECK_ONLY=1 ;;
+*)
+  echo "Usage: $0 [--local-only | --check]" >&2
   exit 1
-fi
-
-mkdir -p "$SKILLS_DIR"
+  ;;
+esac
 
 # wanted: 同期ソース由来の skill / agent 名の集合(改行区切り文字列で保持)。
 # 連想配列(declare -A)は bash 4+ 専用で macOS 標準の bash 3.2 では動かないため使わない。
@@ -71,6 +75,97 @@ link_safe() {
   fi
 }
 
+# manifest 行を 3 形態で解釈し parsed_line / mode / spec / subdir / skillpath を設定する。
+#   A. owner/repo:subdir          コロンあり。subdir 直下を複数 symlink
+#   B. owner/repo/path/to/skill   コロンなし & 3 セグメント以上。1 ディレクトリを単体 symlink
+#   C. owner/repo                 コロンなし & 2 セグメント。subdir 既定 skills で複数 symlink
+# ghq get の対象はいずれも先頭 2 セグメント owner/repo。
+# 戻り値 0=解釈できた / 1=空行・コメントのみ / 2=不正。
+parse_manifest_line() {
+  local line="$1" slashes owner rest
+  line="${line%%#*}"
+  # 前後空白のトリム。xargs は不対の引用符を含む行で異常終了し set -e で sync 全体が
+  # 落ちるため、パラメータ展開で行う。
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line%"${line##*[![:space:]]}"}"
+  parsed_line="$line"
+  [[ -z "$line" ]] && return 1
+
+  mode="multi"
+  skillpath=""
+  if [[ "$line" == *:* ]]; then
+    spec="${line%%:*}"
+    subdir="${line#*:}"
+  else
+    # スラッシュ以外を除去して区切り数を数える(連想配列不要の bash 3.2 互換)。
+    slashes="${line//[!\/]/}"
+    if [[ ${#slashes} -ge 2 ]]; then
+      owner="${line%%/*}"
+      rest="${line#*/}"
+      spec="$owner/${rest%%/*}"
+      skillpath="${rest#*/}"
+      skillpath="${skillpath%/}"
+      mode="single"
+    else
+      spec="$line"
+      subdir="skills"
+    fi
+  fi
+
+  # manifest はリポ内ファイルで PR 経由の改変がありうる。spec の形式検証(各セグメント
+  # 先頭は英数字 = フラグ注入 `-` 始まりと `.` 単独セグメントを排除)で ghq root 外への
+  # 脱出を、`..` 拒否で skillpath/subdir のトラバーサルを塞ぐ。
+  if [[ ! "$spec" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$ || "$spec" == *..* ||
+    "${skillpath:-}" == *..* || "${subdir:-}" == *..* ]]; then
+    return 2
+  fi
+  return 0
+}
+
+# ── --check: 宣言 ↔ symlink の照合 ──
+# ghq もネットワークも呼ばず、ファイルも作らない。単体形態(B)は宣言だけから skill 名が
+# 決まるため照合できるが、複数形態(A/C)は subdir 直下の列挙 = clone の実体が要るため
+# 照合できない。黙って落とさず skipped として件数を出す。
+if [[ "$CHECK_ONLY" -eq 1 ]]; then
+  [[ -f "$MANIFEST" ]] || {
+    echo "manifest not found: $MANIFEST" >&2
+    exit 1
+  }
+  checked=0
+  missing=0
+  invalid=0
+  skipped=0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    rc=0
+    parse_manifest_line "$line" || rc=$?
+    case "$rc" in
+    1) continue ;;
+    2)
+      echo "invalid: $parsed_line" >&2
+      invalid=$((invalid + 1))
+      continue
+      ;;
+    esac
+    if [[ "$mode" != "single" ]]; then
+      echo "skipped: $parsed_line (複数 skill 宣言は clone の列挙が要るため照合対象外)" >&2
+      skipped=$((skipped + 1))
+      continue
+    fi
+    name="$(basename "$skillpath")"
+    checked=$((checked + 1))
+    [[ -L "$SKILLS_DIR/$name" && -f "$SKILLS_DIR/$name/SKILL.md" ]] && continue
+    echo "missing: $name ($parsed_line)"
+    missing=$((missing + 1))
+  done <"$MANIFEST"
+
+  echo
+  echo "skills:sync --check 完了 — checked=$checked missing=$missing invalid=$invalid skipped=$skipped (skills dir: $SKILLS_DIR)"
+  [[ "$missing" -gt 0 || "$invalid" -gt 0 ]] && exit 1
+  exit 0
+fi
+
+mkdir -p "$SKILLS_DIR"
+
 # ── ソース 1: 外部 skill(ext-skills.txt)。--local-only では丸ごとスキップ ──
 if [[ "$LOCAL_ONLY" -eq 0 ]]; then
   command -v ghq &>/dev/null || {
@@ -82,49 +177,17 @@ if [[ "$LOCAL_ONLY" -eq 0 ]]; then
     exit 1
   }
 
-  # 各行を 3 形態で解釈する(ヘッダコメント参照):
-  #   A. owner/repo:subdir          コロンあり。subdir 直下を複数 symlink
-  #   B. owner/repo/path/to/skill   コロンなし & 3 セグメント以上。1 ディレクトリを単体 symlink
-  #   C. owner/repo                 コロンなし & 2 セグメント。subdir 既定 skills で複数 symlink
-  # ghq get の対象はいずれも先頭 2 セグメント owner/repo。
   while IFS= read -r line || [[ -n "$line" ]]; do
-    line="${line%%#*}"
-    # 前後空白のトリム。xargs は不対の引用符を含む行で異常終了し set -e で sync 全体が
-    # 落ちるため、パラメータ展開で行う。
-    line="${line#"${line%%[![:space:]]*}"}"
-    line="${line%"${line##*[![:space:]]}"}"
-    [[ -z "$line" ]] && continue
-
-    mode="multi"
-    skillpath=""
-    if [[ "$line" == *:* ]]; then
-      spec="${line%%:*}"
-      subdir="${line#*:}"
-    else
-      # スラッシュ以外を除去して区切り数を数える(連想配列不要の bash 3.2 互換)。
-      slashes="${line//[!\/]/}"
-      if [[ ${#slashes} -ge 2 ]]; then
-        owner="${line%%/*}"
-        rest="${line#*/}"
-        spec="$owner/${rest%%/*}"
-        skillpath="${rest#*/}"
-        skillpath="${skillpath%/}"
-        mode="single"
-      else
-        spec="$line"
-        subdir="skills"
-      fi
-    fi
-
-    # manifest はリポ内ファイルで PR 経由の改変がありうる。spec の形式検証(各セグメント
-    # 先頭は英数字 = フラグ注入 `-` 始まりと `.` 単独セグメントを排除)で ghq root 外への
-    # 脱出を、`..` 拒否で skillpath/subdir のトラバーサルを塞ぐ。
-    if [[ ! "$spec" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$ || "$spec" == *..* ||
-      "${skillpath:-}" == *..* || "${subdir:-}" == *..* ]]; then
-      echo "WARN: 不正な manifest 行のため skip: $line" >&2
+    rc=0
+    parse_manifest_line "$line" || rc=$?
+    case "$rc" in
+    1) continue ;;
+    2)
+      echo "WARN: 不正な manifest 行のため skip: $parsed_line" >&2
       failed=$((failed + 1))
       continue
-    fi
+      ;;
+    esac
 
     # 外部要因(ネットワーク断・upstream 消滅)でスクリプト全体を即死させず、この行だけ
     # 失敗扱いにする(failed>0 で prune 抑止に乗るため安全)。
