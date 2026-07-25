@@ -124,6 +124,12 @@ evolution_provides() {
 # 戻り値 0=解釈できた / 1=空行・コメントのみ / 2=不正。
 parse_manifest_line() {
   local line="$1" slashes owner rest
+  # 出力用グローバルは、どの return 経路より前に全てリセットする(単体形態は subdir に、
+  # 空行は全てに代入しないため、残留値が下の `..` 判定や呼び出し側へ漏れる)。
+  mode="multi"
+  spec=""
+  skillpath=""
+  subdir=""
   line="${line%%#*}"
   # 前後空白のトリム。xargs は不対の引用符を含む行で異常終了し set -e で sync 全体が
   # 落ちるため、パラメータ展開で行う。
@@ -132,11 +138,6 @@ parse_manifest_line() {
   parsed_line="$line"
   [[ -z "$line" ]] && return 1
 
-  # 出力用グローバルは全て毎回リセットする(単体形態は subdir に代入しないため、
-  # 残留値が下の `..` 判定へ混入して後続行を誤って invalid にする)。
-  mode="multi"
-  skillpath=""
-  subdir=""
   if [[ "$line" == *:* ]]; then
     spec="${line%%:*}"
     subdir="${line#*:}"
