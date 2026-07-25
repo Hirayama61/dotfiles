@@ -146,6 +146,7 @@ mise run skills:sync   # ext-skills.txt を読み ghq clone/更新 → ~/.claude
 - `bin/skills-sync.sh` が `ghq get -u` で取得し `~/.claude/skills/<name>` へ symlink。マニフェストから外れた symlink は prune する(chezmoi 管理の実体ディレクトリには触れない)。
 - `bin/skills-sync.sh --check` は宣言 ↔ symlink の照合だけを行う(ghq もネットワークも呼ばず副作用ゼロ。`missing` / `mismatch` / `invalid` のいずれかがあれば exit 1)。skill 名の存在だけでなく **symlink の向き先**も見る(`readlink` の末尾を `github.com/<owner/repo>/<path>` と照合。同名 skill をローカル進化が上書きしている状態は仕様どおりなので通す)。**末尾一致なので同じ末尾を持つ任意のパスは通る** — 捕まえられるのは宣言の陳腐化・upstream のパス移動・別 owner の同名 skill への取り違えであって、`~/.claude/skills` に書ける相手による意図的な差し替えではない。単体形態(`owner/repo/path/to/skill`)は宣言だけで skill 名が決まるため照合できるが、複数形態(`owner/repo` / `owner/repo:subdir`)は clone の列挙が要るため `skipped` として件数だけ出す。
 - 同期の末尾サマリー `unmanaged=<n>` は、`~/.claude/skills`・`~/.claude/agents` にあって symlink でも chezmoi ソース由来でもない実体の件数。報告のみで削除はしない。cc-dotfiles が未 clone のときは検出自体を行わず `unmanaged=skipped(...)` と出す(「検査して 0 件」と区別するため)。
+- **`--check` は収束判定のゲートには使えない**。見るのは「宣言された skill が張られているか」の一方向だけで、逆向き — 承認済みのローカル進化が `ext-skills.txt` 側の skill を上書きすべきなのに、リンクがまだ ghq 側を指したまま — は緑で通る(次の全量同期で張り替わる)。「`--check` が緑 = 同期済み」と読まない。
 - **手で張った symlink の扱いは skills と agents で非対称**。skills 側の prune は宣言集合から外れた symlink を一律に刈るので `pruned:` に出て消える。agents 側の prune はリンク先がローカル進化配下のものだけを刈るため手張りは残り、`unmanaged` にも入らないのでどこにも現れない。
 - symlink は再配布ではない(本体は ghq clone でローカルに置く)ため LICENSE 同梱不要。
 - `~/.claude/skills/` には cc-dotfiles が実体管理する skill(`obsidian-memory` 等)と ext-skills 経由 symlink の skill が混在する。**外部 skill は vendoring せず symlink** が原則(例: `empirical-prompt-tuning` は `mizchi/skills` から取り込む)。
