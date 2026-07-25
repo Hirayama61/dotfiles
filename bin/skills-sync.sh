@@ -28,6 +28,9 @@ AGENTS_DIR="$HOME/.claude/agents"
 # evolve/evolve-gate・本スクリプトの 4 参照箇所の乖離を防ぐため)。
 EVOLVE_DIR="$HOME/.claude-evolution"
 MANIFEST="$(cd "$(dirname "$0")/.." && pwd)/ext-skills.txt"
+# ~/.claude/ の実体を管理する chezmoi ソース。mise.toml の [env] と同値を既定に置き、
+# mise を介さない直接起動でも同じ場所を見る。
+CC_DOTFILES_DIR="${CC_DOTFILES_DIR:-$HOME/ghq/github.com/Hirayama61/cc-dotfiles}"
 
 LOCAL_ONLY=0
 if [[ "${1:-}" == "--local-only" ]]; then
@@ -46,6 +49,7 @@ wanted_agents=""
 linked=0
 pruned=0
 failed=0
+unmanaged=0
 
 # 衝突ガード付き symlink 作成。宛先が実体(非 symlink)なら chezmoi 管理の疑いとして
 # WARN + failed 計上で skip する(呼び出し側は `|| continue`)。ln 失敗も failed に
@@ -289,8 +293,32 @@ else
   fi
 fi
 
+# ── 管理外エントリの検出(報告のみ)──
+# prune は symlink だけを対象にするため、手で置かれた実体は誰の管轄にも入らない。
+# ここでは削除も prune 対象の拡大もせず WARN で可視化するだけに留める。failed には
+# 計上しない(prune 抑止を誘発する)。exit code も変えない。
+if [[ -d "$CC_DOTFILES_DIR" ]]; then
+  cc_claude="$CC_DOTFILES_DIR/home/dot_claude"
+  for entry in "$SKILLS_DIR"/*; do
+    [[ -e "$entry" && ! -L "$entry" ]] || continue
+    name="$(basename "$entry")"
+    [[ -e "$cc_claude/skills/$name" ]] && continue
+    echo "WARN: 管理外(symlink でも chezmoi ソース由来でもない実体): $entry" >&2
+    unmanaged=$((unmanaged + 1))
+  done
+  if [[ -d "$AGENTS_DIR" ]]; then
+    for entry in "$AGENTS_DIR"/*; do
+      [[ -e "$entry" && ! -L "$entry" ]] || continue
+      name="$(basename "$entry")"
+      [[ -e "$cc_claude/agents/$name" ]] && continue
+      echo "WARN: 管理外(symlink でも chezmoi ソース由来でもない実体): $entry" >&2
+      unmanaged=$((unmanaged + 1))
+    done
+  fi
+fi
+
 echo
-echo "skills:sync 完了 — linked=$linked pruned=$pruned failed=$failed (skills dir: $SKILLS_DIR)"
+echo "skills:sync 完了 — linked=$linked pruned=$pruned failed=$failed unmanaged=$unmanaged (skills dir: $SKILLS_DIR)"
 
 [[ "$failed" -gt 0 ]] && exit 1
 exit 0

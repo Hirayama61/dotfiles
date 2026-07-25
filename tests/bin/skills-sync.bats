@@ -9,6 +9,7 @@
 #   - 作成側の衝突ガード(宛先が実体なら WARN + skip。chezmoi 実体を壊さない)
 #   - --local-only(ghq 同期・prune の全スキップ)
 #   - prune の非破壊条件(failed>0 / --local-only で抑止)
+#   - 管理外エントリの検出(報告のみ。削除も exit code 変更もしない)
 
 setup() {
   export TEST_HOME="$BATS_TEST_TMPDIR/home"
@@ -38,11 +39,19 @@ SH
   chmod +x "$shim/ghq"
   export PATH="$shim:$PATH"
 
+  # chezmoi ソース(cc-dotfiles)も一時側へ向ける。既定では作らない = 実 repo を見に
+  # 行かせないまま「repo 不在」経路になる。
+  export CC_DOTFILES_DIR="$BATS_TEST_TMPDIR/cc-dotfiles"
+  CC_SKILLS="$CC_DOTFILES_DIR/home/dot_claude/skills"
+  CC_AGENTS="$CC_DOTFILES_DIR/home/dot_claude/agents"
+
   SYNC="$FAKE_REPO/bin/skills-sync.sh"
   SKILLS_DIR="$HOME/.claude/skills"
   AGENTS_DIR="$HOME/.claude/agents"
   EVOLVE="$HOME/.claude-evolution"
 }
+
+_seed_cc_source() { mkdir -p "$CC_SKILLS" "$CC_AGENTS"; }
 
 _seed_active_skill() {
   mkdir -p "$EVOLVE/active/skills/$1"
@@ -252,6 +261,65 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   run "$SYNC"
   [ "$status" -eq 1 ]
   [ -L "$SKILLS_DIR/keep-me" ]
+}
+
+@test "unmanaged: real skill dir with no chezmoi source is reported, never removed" {
+  _seed_cc_source
+  mkdir -p "$SKILLS_DIR/hand-placed"
+  printf 'real\n' >"$SKILLS_DIR/hand-placed/SKILL.md"
+  run "$SYNC"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"管理外"* ]]
+  [[ "$output" == *"unmanaged=1"* ]]
+  [ -d "$SKILLS_DIR/hand-placed" ]
+  [ "$(cat "$SKILLS_DIR/hand-placed/SKILL.md")" = "real" ]
+}
+
+@test "unmanaged: real skill dir backed by chezmoi source is not reported" {
+  _seed_cc_source
+  mkdir -p "$CC_SKILLS/obsidian-memory" "$SKILLS_DIR/obsidian-memory"
+  printf 'real\n' >"$SKILLS_DIR/obsidian-memory/SKILL.md"
+  run "$SYNC"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"unmanaged=0"* ]]
+  [[ "$output" != *"管理外"* ]]
+}
+
+@test "unmanaged: real agent file with no chezmoi source is reported, never removed" {
+  _seed_cc_source
+  mkdir -p "$AGENTS_DIR"
+  printf 'hand\n' >"$AGENTS_DIR/hand.md"
+  run "$SYNC"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"unmanaged=1"* ]]
+  [ -f "$AGENTS_DIR/hand.md" ]
+  [ ! -L "$AGENTS_DIR/hand.md" ]
+}
+
+@test "unmanaged: detection is skipped when cc-dotfiles source is absent" {
+  mkdir -p "$SKILLS_DIR/hand-placed"
+  printf 'real\n' >"$SKILLS_DIR/hand-placed/SKILL.md"
+  run "$SYNC"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"unmanaged=0"* ]]
+  [[ "$output" != *"管理外"* ]]
+}
+
+@test "unmanaged: presence changes neither prune count nor exit code" {
+  _seed_cc_source
+  mkdir -p "$SKILLS_DIR" "$BATS_TEST_TMPDIR/stale"
+  ln -s "$BATS_TEST_TMPDIR/stale" "$SKILLS_DIR/stale-skill"
+  run "$SYNC"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pruned=1"* ]]
+  [[ "$output" == *"unmanaged=0"* ]]
+
+  mkdir -p "$SKILLS_DIR/hand-placed"
+  ln -s "$BATS_TEST_TMPDIR/stale" "$SKILLS_DIR/stale-skill"
+  run "$SYNC"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pruned=1"* ]]
+  [[ "$output" == *"unmanaged=1"* ]]
 }
 
 @test "rejects unknown flag" {
