@@ -499,6 +499,8 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   printf '# secret\n' >"$FAKE_GHQ_ROOT/github.com/owner/repo/secret-dir/SKILL.md"
   local form
   for form in 'owner/repo:' 'owner/repo:.' 'owner/repo:/' 'owner/repo:./' 'owner/repo:.//'; do
+    # 失敗時、bats はこの stdout を表示する。どの form で落ちたかが行番号だけでは読めない。
+    echo "form=$form"
     rm -rf "$SKILLS_DIR"
     printf '%s\n' "$form" >"$FAKE_REPO/ext-skills.txt"
     run "$SYNC"

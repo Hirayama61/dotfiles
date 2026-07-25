@@ -107,9 +107,7 @@ evolution_provides() {
   if [[ -L "$d" || -L "$d/SKILL.md" ]]; then
     return 1
   fi
-  # 現状 --check からは到達不能($SKILLS_DIR/<name> 側の -f が同じ実ファイルを先に見る)。
-  # full sync の条件一覧をこの関数へ集約する意図で残す。missing 判定の順序を変えるときは
-  # ここが唯一の砦になる。
+  # --check からは到達不能($SKILLS_DIR/<name> 側の -f が同じ実ファイルを先に見る)。
   if [[ ! -f "$d/SKILL.md" ]]; then
     return 1
   fi
@@ -127,8 +125,7 @@ evolution_provides() {
 # 戻り値 0=解釈できた / 1=空行・コメントのみ / 2=不正。
 parse_manifest_line() {
   local line="$1" slashes owner rest seg_re
-  # 出力用グローバルは、どの return 経路より前に全てリセットする(単体形態は subdir に、
-  # 空行は全てに代入しないため、残留値が下の `..` 判定や呼び出し側へ漏れる)。
+  # 出力用グローバルは全 return 経路より前でリセットする。
   mode="multi"
   spec=""
   skillpath=""
