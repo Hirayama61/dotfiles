@@ -7,6 +7,9 @@
 # 実行: mise run skills:sync
 #       bin/skills-sync.sh --local-only   (ローカル進化のみ反映。ghq 同期と prune を
 #                                          スキップする evolve-gate 承認経路用の軽量モード)
+#       bin/skills-sync.sh --check        (宣言 ↔ symlink の照合のみ。ghq もネットワークも
+#                                          呼ばず副作用ゼロ。missing / mismatch / invalid の
+#                                          いずれかがあれば exit 1)
 #
 # マニフェスト集合 + ローカル進化集合から外れた symlink は prune する(全量同期時のみ)。
 # 同名 skill が両ソースにある場合は後段のローカル進化が勝つ(意図した優先順位。
@@ -28,16 +31,25 @@ AGENTS_DIR="$HOME/.claude/agents"
 # evolve/evolve-gate・本スクリプトの 4 参照箇所の乖離を防ぐため)。
 EVOLVE_DIR="$HOME/.claude-evolution"
 MANIFEST="$(cd "$(dirname "$0")/.." && pwd)/ext-skills.txt"
+# ~/.claude/ の実体を管理する chezmoi ソース。mise.toml の [env] と同値を既定に置き、
+# mise を介さない直接起動でも同じ場所を見る。
+CC_DOTFILES_DIR="${CC_DOTFILES_DIR:-$HOME/ghq/github.com/Hirayama61/cc-dotfiles}"
 
 LOCAL_ONLY=0
-if [[ "${1:-}" == "--local-only" ]]; then
-  LOCAL_ONLY=1
-elif [[ $# -gt 0 ]]; then
-  echo "Usage: $0 [--local-only]" >&2
+CHECK_ONLY=0
+if [[ $# -gt 1 ]]; then
+  echo "Usage: $0 [--local-only | --check]" >&2
   exit 1
 fi
-
-mkdir -p "$SKILLS_DIR"
+case "${1:-}" in
+"") ;;
+--local-only) LOCAL_ONLY=1 ;;
+--check) CHECK_ONLY=1 ;;
+*)
+  echo "Usage: $0 [--local-only | --check]" >&2
+  exit 1
+  ;;
+esac
 
 # wanted: 同期ソース由来の skill / agent 名の集合(改行区切り文字列で保持)。
 # 連想配列(declare -A)は bash 4+ 専用で macOS 標準の bash 3.2 では動かないため使わない。
@@ -46,6 +58,8 @@ wanted_agents=""
 linked=0
 pruned=0
 failed=0
+unmanaged=0
+unmanaged_display=""
 
 # 衝突ガード付き symlink 作成。宛先が実体(非 symlink)なら chezmoi 管理の疑いとして
 # WARN + failed 計上で skip する(呼び出し側は `|| continue`)。ln 失敗も failed に
@@ -67,6 +81,181 @@ link_safe() {
   fi
 }
 
+# ローカル進化の親階層に symlink が無いことを確認する(「candidates は効力を持たない」の
+# 実装側担保)。full sync と --check の両方が同じ判定を使う。symlink なら理由を stderr へ
+# 出し 1 を返す。
+evolve_hierarchy_ok() {
+  local d
+  evolve_symlink_path=""
+  for d in "$EVOLVE_DIR" "$EVOLVE_DIR/active" "$EVOLVE_DIR/active/skills" "$EVOLVE_DIR/active/agents"; do
+    if [[ -L "$d" ]]; then
+      evolve_symlink_path="$d"
+      return 1
+    fi
+  done
+  return 0
+}
+
+# full sync がこの名前をローカル進化から link する条件。--check の例外が同じ判定を使う
+# (条件が食い違うと、full sync が link しない状態を --check が正常と報告する)。
+# `[[ ]]` の失敗は bash 3.2 の set -e で伝播しないため、判定は必ず if で書く。
+evolution_provides() {
+  local name="$1" d="$EVOLVE_DIR/active/skills/$1"
+  if ! evolve_hierarchy_ok; then
+    return 1
+  fi
+  if [[ -L "$d" || -L "$d/SKILL.md" ]]; then
+    return 1
+  fi
+  # --check からは到達不能($SKILLS_DIR/<name> 側の -f が同じ実ファイルを先に見る)。
+  if [[ ! -f "$d/SKILL.md" ]]; then
+    return 1
+  fi
+  if [[ ! "$name" =~ ^[a-z0-9-]+$ ]]; then
+    return 1
+  fi
+  return 0
+}
+
+# manifest 行を 3 形態で解釈し parsed_line / mode / spec / subdir / skillpath を設定する。
+#   A. owner/repo:subdir          コロンあり。subdir 直下を複数 symlink
+#   B. owner/repo/path/to/skill   コロンなし & 3 セグメント以上。1 ディレクトリを単体 symlink
+#   C. owner/repo                 コロンなし & 2 セグメント。subdir 既定 skills で複数 symlink
+# ghq get の対象はいずれも先頭 2 セグメント owner/repo。
+# 戻り値 0=解釈できた / 1=空行・コメントのみ / 2=不正。
+parse_manifest_line() {
+  local line="$1" slashes owner rest seg_re
+  # 出力用グローバルは全 return 経路より前でリセットする。
+  mode="multi"
+  spec=""
+  skillpath=""
+  subdir=""
+  line="${line%%#*}"
+  # 前後空白のトリム。xargs は不対の引用符を含む行で異常終了し set -e で sync 全体が
+  # 落ちるため、パラメータ展開で行う。
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line%"${line##*[![:space:]]}"}"
+  parsed_line="$line"
+  [[ -z "$line" ]] && return 1
+
+  if [[ "$line" == *:* ]]; then
+    spec="${line%%:*}"
+    subdir="${line#*:}"
+    subdir="${subdir%/}"
+  else
+    # スラッシュ以外を除去して区切り数を数える(連想配列不要の bash 3.2 互換)。
+    slashes="${line//[!\/]/}"
+    if [[ ${#slashes} -ge 2 ]]; then
+      owner="${line%%/*}"
+      rest="${line#*/}"
+      spec="$owner/${rest%%/*}"
+      skillpath="${rest#*/}"
+      skillpath="${skillpath%/}"
+      mode="single"
+    else
+      spec="$line"
+      subdir="skills"
+    fi
+  fi
+
+  # manifest はリポ内ファイルで PR 経由の改変がありうる。3 つとも同じ字種で検証する
+  # (各セグメント先頭は英数字)。これで ghq root 外への脱出(`-` 始まりのフラグ注入)、
+  # `..` を含むセグメント、`.` 単独セグメント、空セグメント(`//`)、空文字列が一括で落ちる。
+  # 空だけを別判定に切り出さない — その判定が漏れると字種側が素通りし、subdir/skillpath が
+  # repo ルートへ戻って宣言者が意図しない repo 直下の全ディレクトリを走査する。
+  # `=~` の右辺は非引用にする(bash 3.2 は引用するとリテラル比較になり検証が無効化する)。
+  seg_re='^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$'
+  if [[ ! "$spec" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$ || "$spec" == *..* ]]; then
+    return 2
+  fi
+  if [[ "$mode" == "single" ]]; then
+    if [[ ! "$skillpath" =~ $seg_re ]]; then
+      return 2
+    fi
+  else
+    if [[ ! "$subdir" =~ $seg_re ]]; then
+      return 2
+    fi
+  fi
+  return 0
+}
+
+# ── --check: 宣言 ↔ symlink の照合 ──
+# ghq もネットワークも呼ばず、ファイルも作らない。単体形態(B)は宣言だけから skill 名が
+# 決まるため照合できるが、複数形態(A/C)は subdir 直下の列挙 = clone の実体が要るため
+# 照合できない。黙って落とさず skipped として件数を出す。
+# 判定は missing(symlink でない or SKILL.md 不達)と mismatch(向き先が宣言と別)の 2 段。
+if [[ "$CHECK_ONLY" -eq 1 ]]; then
+  [[ -f "$MANIFEST" ]] || {
+    echo "manifest not found: $MANIFEST" >&2
+    exit 1
+  }
+  checked=0
+  missing=0
+  mismatch=0
+  invalid=0
+  skipped=0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    rc=0
+    parse_manifest_line "$line" || rc=$?
+    case "$rc" in
+    1) continue ;;
+    2)
+      echo "invalid: $parsed_line"
+      invalid=$((invalid + 1))
+      continue
+      ;;
+    esac
+    if [[ "$mode" != "single" ]]; then
+      echo "skipped: $parsed_line (複数 skill 宣言は clone の列挙が要るため照合対象外)"
+      skipped=$((skipped + 1))
+      continue
+    fi
+    name="$(basename "$skillpath")"
+    checked=$((checked + 1))
+    if [[ ! -L "$SKILLS_DIR/$name" || ! -f "$SKILLS_DIR/$name/SKILL.md" ]]; then
+      echo "missing: $name ($parsed_line)"
+      missing=$((missing + 1))
+      continue
+    fi
+    # sync 側が張る実体は `<ghq root>/github.com/<spec>/<skillpath>`。ghq を呼ばずに
+    # 照合するため末尾一致で見る。**同じ末尾を持つ任意のパスは通る**ので、これは
+    # 宣言の陳腐化・別 owner の同名 skill への取り違えを捕まえるためのもので、
+    # 書込権限を持つ相手による意図的な差し替えは検出できない。
+    # 同名 skill がローカル進化側にもある場合は後段が勝つのが仕様(ヘッダ参照)なので、
+    # その向き先は正常として通す。
+    link_target="$(readlink "$SKILLS_DIR/$name")"
+    case "$link_target" in
+    */github.com/"$spec"/"$skillpath") ;;
+    "$EVOLVE_DIR"/active/skills/"$name")
+      # この例外は「full sync がこの名前をローカル進化から link する」ときだけ成立する。
+      # 条件を満たさない向き先は、宣言された ext-skill が正しく張られていない状態なので
+      # mismatch を出す(判定不能を緑に倒さない)。条件の正典は下の ソース 2 のループ。
+      if ! evolution_provides "$name"; then
+        reason="ローカル進化から link される状態にない"
+        # 階層 symlink は candidates を効かせる兆候そのもの。どこが symlink かを出す。
+        if [[ -n "${evolve_symlink_path:-}" ]]; then
+          reason="$reason: 階層が symlink $evolve_symlink_path"
+        fi
+        echo "mismatch: $name -> $link_target ($reason)"
+        mismatch=$((mismatch + 1))
+      fi
+      ;;
+    *)
+      echo "mismatch: $name -> $link_target (宣言: $parsed_line)"
+      mismatch=$((mismatch + 1))
+      ;;
+    esac
+  done <"$MANIFEST"
+
+  echo
+  echo "skills:sync --check 完了 — checked=$checked missing=$missing mismatch=$mismatch invalid=$invalid skipped=$skipped (skills dir: $SKILLS_DIR)"
+  [[ "$missing" -gt 0 || "$mismatch" -gt 0 || "$invalid" -gt 0 ]] && exit 1
+  exit 0
+fi
+
+mkdir -p "$SKILLS_DIR"
+
 # ── ソース 1: 外部 skill(ext-skills.txt)。--local-only では丸ごとスキップ ──
 if [[ "$LOCAL_ONLY" -eq 0 ]]; then
   command -v ghq &>/dev/null || {
@@ -78,49 +267,17 @@ if [[ "$LOCAL_ONLY" -eq 0 ]]; then
     exit 1
   }
 
-  # 各行を 3 形態で解釈する(ヘッダコメント参照):
-  #   A. owner/repo:subdir          コロンあり。subdir 直下を複数 symlink
-  #   B. owner/repo/path/to/skill   コロンなし & 3 セグメント以上。1 ディレクトリを単体 symlink
-  #   C. owner/repo                 コロンなし & 2 セグメント。subdir 既定 skills で複数 symlink
-  # ghq get の対象はいずれも先頭 2 セグメント owner/repo。
   while IFS= read -r line || [[ -n "$line" ]]; do
-    line="${line%%#*}"
-    # 前後空白のトリム。xargs は不対の引用符を含む行で異常終了し set -e で sync 全体が
-    # 落ちるため、パラメータ展開で行う。
-    line="${line#"${line%%[![:space:]]*}"}"
-    line="${line%"${line##*[![:space:]]}"}"
-    [[ -z "$line" ]] && continue
-
-    mode="multi"
-    skillpath=""
-    if [[ "$line" == *:* ]]; then
-      spec="${line%%:*}"
-      subdir="${line#*:}"
-    else
-      # スラッシュ以外を除去して区切り数を数える(連想配列不要の bash 3.2 互換)。
-      slashes="${line//[!\/]/}"
-      if [[ ${#slashes} -ge 2 ]]; then
-        owner="${line%%/*}"
-        rest="${line#*/}"
-        spec="$owner/${rest%%/*}"
-        skillpath="${rest#*/}"
-        skillpath="${skillpath%/}"
-        mode="single"
-      else
-        spec="$line"
-        subdir="skills"
-      fi
-    fi
-
-    # manifest はリポ内ファイルで PR 経由の改変がありうる。spec の形式検証(各セグメント
-    # 先頭は英数字 = フラグ注入 `-` 始まりと `.` 単独セグメントを排除)で ghq root 外への
-    # 脱出を、`..` 拒否で skillpath/subdir のトラバーサルを塞ぐ。
-    if [[ ! "$spec" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$ || "$spec" == *..* ||
-      "${skillpath:-}" == *..* || "${subdir:-}" == *..* ]]; then
-      echo "WARN: 不正な manifest 行のため skip: $line" >&2
+    rc=0
+    parse_manifest_line "$line" || rc=$?
+    case "$rc" in
+    1) continue ;;
+    2)
+      echo "WARN: 不正な manifest 行のため skip: $parsed_line" >&2
       failed=$((failed + 1))
       continue
-    fi
+      ;;
+    esac
 
     # 外部要因(ネットワーク断・upstream 消滅)でスクリプト全体を即死させず、この行だけ
     # 失敗扱いにする(failed>0 で prune 抑止に乗るため安全)。
@@ -210,16 +367,10 @@ fi
 # symlink 経由で candidates/ が効力を持つ経路を、エントリ単位 + 親階層の両方で塞ぐ
 # (「candidates は効力を持たない」の実装側担保)。名前は evolve の規約 ^[a-z0-9-]+$ に
 # 一致するものだけ link する(evolve-gate の退避 .prev や不正名を有効化しない)。
-evolve_dirs_ok=1
-for d in "$EVOLVE_DIR" "$EVOLVE_DIR/active" "$EVOLVE_DIR/active/skills" "$EVOLVE_DIR/active/agents"; do
-  if [[ -L "$d" ]]; then
-    echo "WARN: ローカル進化の階層が symlink のため全 skip: $d" >&2
-    failed=$((failed + 1))
-    evolve_dirs_ok=0
-    break
-  fi
-done
-if [[ "$evolve_dirs_ok" -eq 1 ]]; then
+if ! evolve_hierarchy_ok; then
+  echo "WARN: ローカル進化の階層が symlink のため全 skip: $evolve_symlink_path" >&2
+  failed=$((failed + 1))
+else
   shopt -s nullglob
   for skill in "$EVOLVE_DIR"/active/skills/*/; do
     [[ -L "${skill%/}" || -L "$skill/SKILL.md" ]] && continue
@@ -289,8 +440,42 @@ else
   fi
 fi
 
+# ── 管理外エントリの検出(報告のみ)──
+# prune は symlink だけを対象にするため、手で置かれた実体は誰の管轄にも入らない。
+# ここでは削除も prune 対象の拡大もせず WARN で可視化するだけに留める。failed には
+# 計上しない(prune 抑止を誘発する)。exit code も変えない。
+# 突合は chezmoi の source name と target name が一致する前提に立つ。属性 prefix
+# (private_ / exact_ 等)や .tmpl が付いたエントリは誤って管理外と報告される。
+# 突合先(home/dot_claude)が無いまま走らせると全件が偽になり、chezmoi 管理下の実体まで
+# 管理外として並ぶ。repo はあるが突合先が無い状態はレイアウト変更・パス typo・
+# sparse checkout で起きる。
+cc_claude="$CC_DOTFILES_DIR/home/dot_claude"
+if [[ -d "$cc_claude" ]]; then
+  for entry in "$SKILLS_DIR"/*; do
+    [[ -e "$entry" && ! -L "$entry" ]] || continue
+    name="$(basename "$entry")"
+    [[ -e "$cc_claude/skills/$name" ]] && continue
+    echo "WARN: 管理外(symlink でも chezmoi ソース由来でもない実体): $entry" >&2
+    unmanaged=$((unmanaged + 1))
+  done
+  if [[ -d "$AGENTS_DIR" ]]; then
+    for entry in "$AGENTS_DIR"/*; do
+      [[ -e "$entry" && ! -L "$entry" ]] || continue
+      name="$(basename "$entry")"
+      [[ -e "$cc_claude/agents/$name" ]] && continue
+      echo "WARN: 管理外(symlink でも chezmoi ソース由来でもない実体): $entry" >&2
+      unmanaged=$((unmanaged + 1))
+    done
+  fi
+else
+  # 突合先不在は未 clone なら正規の状態。数値のまま 0 を出すと「検査して 0 件」と
+  # 区別が付かない。
+  unmanaged_display="skipped(chezmoi ソース不在: $cc_claude)"
+  echo "NOTE: chezmoi ソース不在のため管理外検出をスキップしました: $cc_claude" >&2
+fi
+
 echo
-echo "skills:sync 完了 — linked=$linked pruned=$pruned failed=$failed (skills dir: $SKILLS_DIR)"
+echo "skills:sync 完了 — linked=$linked pruned=$pruned failed=$failed unmanaged=${unmanaged_display:-$unmanaged} (skills dir: $SKILLS_DIR)"
 
 [[ "$failed" -gt 0 ]] && exit 1
 exit 0

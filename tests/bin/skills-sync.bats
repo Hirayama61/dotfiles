@@ -9,6 +9,8 @@
 #   - 作成側の衝突ガード(宛先が実体なら WARN + skip。chezmoi 実体を壊さない)
 #   - --local-only(ghq 同期・prune の全スキップ)
 #   - prune の非破壊条件(failed>0 / --local-only で抑止)
+#   - 管理外エントリの検出(報告のみ。削除も exit code 変更もしない)
+#   - --check(宣言 ↔ symlink の照合。ghq 非呼出・副作用ゼロ・欠落で exit 1)
 
 setup() {
   export TEST_HOME="$BATS_TEST_TMPDIR/home"
@@ -37,11 +39,36 @@ esac
 SH
   chmod +x "$shim/ghq"
   export PATH="$shim:$PATH"
+  export GHQ_TRACE="$BATS_TEST_TMPDIR/ghq-called"
+  SHIM_DIR="$shim"
+
+  # chezmoi ソース(cc-dotfiles)も一時側へ向ける。既定では作らない = 実 repo を見に
+  # 行かせないまま「repo 不在」経路になる。
+  export CC_DOTFILES_DIR="$BATS_TEST_TMPDIR/cc-dotfiles"
+  CC_SKILLS="$CC_DOTFILES_DIR/home/dot_claude/skills"
+  CC_AGENTS="$CC_DOTFILES_DIR/home/dot_claude/agents"
 
   SYNC="$FAKE_REPO/bin/skills-sync.sh"
   SKILLS_DIR="$HOME/.claude/skills"
   AGENTS_DIR="$HOME/.claude/agents"
   EVOLVE="$HOME/.claude-evolution"
+}
+
+_seed_cc_source() { mkdir -p "$CC_SKILLS" "$CC_AGENTS"; }
+
+# 出力照合。macOS 同梱の bash 3.2 は set -e で [[ ]] の失敗を無視するため、末尾以外に
+# 置いた [[ ]] アサーションは空振りする。関数呼び出しなら失敗が伝播する。
+_has() { case "$2" in *"$1"*) return 0 ;; *) return 1 ;; esac; }
+_lacks() { case "$2" in *"$1"*) return 1 ;; *) return 0 ;; esac; }
+
+# ghq が呼ばれたら $GHQ_TRACE に痕跡を残す shim へ差し替える(--check の非呼出検証用)。
+_trace_ghq() {
+  cat >"$SHIM_DIR/ghq" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$GHQ_TRACE"
+exit 0
+SH
+  chmod +x "$SHIM_DIR/ghq"
 }
 
 _seed_active_skill() {
@@ -62,7 +89,7 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
 @test "local-only: evolution dir absent is normal (exit 0, no links)" {
   run "$SYNC" --local-only
   [ "$status" -eq 0 ]
-  [[ "$output" == *"linked=0"* ]]
+  _has 'linked=0' "$output"
 }
 
 @test "local-only: links active skill into ~/.claude/skills" {
@@ -86,7 +113,7 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   _seed_active_skill self-review
   run "$SYNC" --local-only
   [ "$status" -eq 1 ]
-  [[ "$output" == *"WARN"* ]]
+  _has 'WARN' "$output"
   [ ! -L "$SKILLS_DIR/self-review" ]
   [ "$(cat "$SKILLS_DIR/self-review/SKILL.md")" = "real" ]
 }
@@ -166,7 +193,7 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   ln -s "$EVOLVE/candidates/skills" "$EVOLVE/active/skills"
   run "$SYNC" --local-only
   [ "$status" -eq 1 ]
-  [[ "$output" == *"階層が symlink"* ]]
+  _has '階層が symlink' "$output"
   [ ! -e "$SKILLS_DIR/sneaky" ]
 }
 
@@ -184,7 +211,7 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   printf -- '-shallow/repo\n' >"$FAKE_REPO/ext-skills.txt"
   run "$SYNC"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"不正な manifest 行"* ]]
+  _has '不正な manifest 行' "$output"
 }
 
 @test "full: manifest line with traversal is rejected (WARN + no link, prune suppressed)" {
@@ -193,7 +220,7 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   ln -s "$BATS_TEST_TMPDIR/keep" "$SKILLS_DIR/keep-me"
   run "$SYNC"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"不正な manifest 行"* ]]
+  _has '不正な manifest 行' "$output"
   [ -L "$SKILLS_DIR/keep-me" ]
 }
 
@@ -215,7 +242,7 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   printf 'owner/repo:skills2\n' >"$FAKE_REPO/ext-skills.txt"
   run "$SYNC"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"repo 外を指す skill"* ]]
+  _has 'repo 外を指す skill' "$output"
   [ ! -e "$SKILLS_DIR/ext-skill" ]
 }
 
@@ -239,7 +266,7 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   ln -s "$BATS_TEST_TMPDIR/keep" "$SKILLS_DIR/keep-me"
   run "$SYNC"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"prune を抑止"* ]]
+  _has 'prune を抑止' "$output"
   [ -L "$SKILLS_DIR/keep-me" ]
 }
 
@@ -254,8 +281,324 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   [ -L "$SKILLS_DIR/keep-me" ]
 }
 
+@test "unmanaged: real skill dir with no chezmoi source is reported, never removed" {
+  _seed_cc_source
+  mkdir -p "$SKILLS_DIR/hand-placed"
+  printf 'real\n' >"$SKILLS_DIR/hand-placed/SKILL.md"
+  run "$SYNC"
+  [ "$status" -eq 0 ]
+  _has '管理外' "$output"
+  _has 'unmanaged=1' "$output"
+  [ -d "$SKILLS_DIR/hand-placed" ]
+  [ "$(cat "$SKILLS_DIR/hand-placed/SKILL.md")" = "real" ]
+}
+
+@test "unmanaged: real skill dir backed by chezmoi source is not reported" {
+  _seed_cc_source
+  mkdir -p "$CC_SKILLS/obsidian-memory" "$SKILLS_DIR/obsidian-memory"
+  printf 'real\n' >"$SKILLS_DIR/obsidian-memory/SKILL.md"
+  run "$SYNC"
+  [ "$status" -eq 0 ]
+  _has 'unmanaged=0' "$output"
+  _lacks '管理外' "$output"
+}
+
+@test "unmanaged: real agent file with no chezmoi source is reported, never removed" {
+  _seed_cc_source
+  mkdir -p "$AGENTS_DIR"
+  printf 'hand\n' >"$AGENTS_DIR/hand.md"
+  run "$SYNC"
+  [ "$status" -eq 0 ]
+  _has 'unmanaged=1' "$output"
+  [ -f "$AGENTS_DIR/hand.md" ]
+  [ ! -L "$AGENTS_DIR/hand.md" ]
+}
+
+@test "unmanaged: detection is skipped when cc-dotfiles source is absent" {
+  # 未 clone は正規の状態。数値 0 を出すと「検査して 0 件」と区別が付かないため、
+  # スキップしたことがサマリーから読み取れることを固定する。
+  mkdir -p "$SKILLS_DIR/hand-placed"
+  printf 'real\n' >"$SKILLS_DIR/hand-placed/SKILL.md"
+  run "$SYNC"
+  [ "$status" -eq 0 ]
+  _has 'unmanaged=skipped(' "$output"
+  _lacks 'unmanaged=0' "$output"
+  _lacks 'WARN: 管理外' "$output"
+}
+
+@test "unmanaged: detection is skipped when the chezmoi source layout is absent" {
+  # repo はあるが home/dot_claude が無い(レイアウト変更・パス typo・sparse checkout)。
+  # ガードを $CC_DOTFILES_DIR に張ると突合先が全件偽になり、chezmoi 管理下の実体まで
+  # 管理外として並ぶ。
+  mkdir -p "$CC_DOTFILES_DIR"
+  mkdir -p "$SKILLS_DIR/hand-placed"
+  printf 'real\n' >"$SKILLS_DIR/hand-placed/SKILL.md"
+  run "$SYNC"
+  [ "$status" -eq 0 ]
+  _has 'unmanaged=skipped(' "$output"
+  _lacks 'WARN: 管理外' "$output"
+}
+
+@test "unmanaged: presence changes neither prune count nor exit code" {
+  _seed_cc_source
+  mkdir -p "$SKILLS_DIR" "$BATS_TEST_TMPDIR/stale"
+  ln -s "$BATS_TEST_TMPDIR/stale" "$SKILLS_DIR/stale-skill"
+  run "$SYNC"
+  [ "$status" -eq 0 ]
+  _has 'pruned=1' "$output"
+  _has 'unmanaged=0' "$output"
+
+  mkdir -p "$SKILLS_DIR/hand-placed"
+  ln -s "$BATS_TEST_TMPDIR/stale" "$SKILLS_DIR/stale-skill"
+  run "$SYNC"
+  [ "$status" -eq 0 ]
+  _has 'pruned=1' "$output"
+  _has 'unmanaged=1' "$output"
+}
+
+@test "check: declared symlink in place -> exit 0 without calling ghq" {
+  _seed_ext_skill owner/repo skills ext-skill
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR"
+  ln -s "$FAKE_GHQ_ROOT/github.com/owner/repo/skills/ext-skill" "$SKILLS_DIR/ext-skill"
+  _trace_ghq
+  run "$SYNC" --check
+  [ "$status" -eq 0 ]
+  _has 'checked=1 missing=0' "$output"
+  [ ! -e "$GHQ_TRACE" ]
+}
+
+@test "check: missing symlink -> exit 1 naming the skill, without calling ghq" {
+  _seed_ext_skill owner/repo skills ext-skill
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  _trace_ghq
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'missing: ext-skill' "$output"
+  [ ! -e "$GHQ_TRACE" ]
+}
+
+@test "check: dangling symlink counts as missing" {
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR"
+  ln -s "$BATS_TEST_TMPDIR/gone/ext-skill" "$SKILLS_DIR/ext-skill"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'missing: ext-skill' "$output"
+}
+
+@test "check: creates nothing and prunes nothing" {
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR" "$BATS_TEST_TMPDIR/stale"
+  ln -s "$BATS_TEST_TMPDIR/stale" "$SKILLS_DIR/stale-skill"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  [ -L "$SKILLS_DIR/stale-skill" ]
+  [ ! -e "$AGENTS_DIR" ]
+}
+
+@test "check: does not create the skills dir when it is absent" {
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  [ ! -e "$SKILLS_DIR" ]
+}
+
+@test "check: multi-form declarations are counted as skipped, not silently ignored" {
+  printf 'owner/repo\n' >"$FAKE_REPO/ext-skills.txt"
+  _trace_ghq
+  run "$SYNC" --check
+  [ "$status" -eq 0 ]
+  _has 'checked=0' "$output"
+  _has 'skipped=1' "$output"
+  [ ! -e "$GHQ_TRACE" ]
+}
+
+@test "check: invalid manifest line is reported and exits 1" {
+  printf -- '-shallow/repo\n' >"$FAKE_REPO/ext-skills.txt"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'invalid: -shallow/repo' "$output"
+}
+
+@test "check: symlink pointing outside the declared repo is a mismatch, not green" {
+  # skill の中身はモデルが読む指示文なので、名前が合っていても向き先が別なら差し替えが
+  # 成立する。存在確認だけで緑にしないことを固定する。
+  _seed_ext_skill owner/repo skills ext-skill
+  mkdir -p "$BATS_TEST_TMPDIR/attacker/ext-skill"
+  printf '# other\n' >"$BATS_TEST_TMPDIR/attacker/ext-skill/SKILL.md"
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR"
+  ln -s "$BATS_TEST_TMPDIR/attacker/ext-skill" "$SKILLS_DIR/ext-skill"
+  _trace_ghq
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'mismatch: ext-skill' "$output"
+  _has 'missing=0 mismatch=1' "$output"
+  [ ! -e "$GHQ_TRACE" ]
+}
+
+@test "check: a skill overridden by local evolution is not a mismatch" {
+  # 同名 skill が両ソースにあるとローカル進化が勝つのは仕様(スクリプト冒頭)。full sync が
+  # exit 0 で作る状態を --check が赤にすると、緑の同期直後に恒常的な赤が出る。
+  _seed_ext_skill owner/repo skills ext-skill
+  _seed_active_skill ext-skill
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR"
+  ln -s "$EVOLVE/active/skills/ext-skill" "$SKILLS_DIR/ext-skill"
+  run "$SYNC" --check
+  [ "$status" -eq 0 ]
+  _has 'checked=1 missing=0 mismatch=0' "$output"
+  _lacks 'mismatch: ext-skill' "$output"
+}
+
+@test "check: evolution hierarchy symlink is a mismatch, matching full sync" {
+  # active/skills を candidates/skills へ向けると人間ゲート前の候補が効力を持つ。
+  # full sync は全 skip + failed にする状態なので、--check だけ緑にしない。
+  _seed_ext_skill owner/repo skills ext-skill
+  mkdir -p "$EVOLVE/active" "$EVOLVE/candidates/skills/ext-skill"
+  printf '# candidate\n' >"$EVOLVE/candidates/skills/ext-skill/SKILL.md"
+  ln -s "$EVOLVE/candidates/skills" "$EVOLVE/active/skills"
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR"
+  ln -s "$EVOLVE/active/skills/ext-skill" "$SKILLS_DIR/ext-skill"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  # 理由側を positive に固定する(mismatch の語だけだと、例外 case を丸ごと消した変異が
+  # `*)` へ落ちて同じ語を出すため素通りする)。
+  _has 'mismatch: ext-skill' "$output"
+  _has 'ローカル進化から link される状態にない' "$output"
+  # 攻撃の兆候そのものなので、どの階層が symlink かを診断に出す。
+  _has "階層が symlink $EVOLVE/active/skills" "$output"
+  # --check は何も skip しないので、full sync 用の「全 skip」WARN は出さない。
+  _lacks '全 skip' "$output"
+}
+
+@test "check: evolution entry that is itself a symlink is a mismatch" {
+  # 階層 4 つが実体でも、エントリ自体を candidates へ向ければ同じ迂回になる。
+  # full sync はこのエントリを link しない(ソース 2 のループが -L で skip する)。
+  _seed_ext_skill owner/repo skills ext-skill
+  mkdir -p "$EVOLVE/active/skills" "$EVOLVE/active/agents" "$EVOLVE/candidates/skills/ext-skill"
+  printf '# candidate\n' >"$EVOLVE/candidates/skills/ext-skill/SKILL.md"
+  ln -s "$EVOLVE/candidates/skills/ext-skill" "$EVOLVE/active/skills/ext-skill"
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR"
+  ln -s "$EVOLVE/active/skills/ext-skill" "$SKILLS_DIR/ext-skill"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'mismatch: ext-skill' "$output"
+}
+
+@test "check: evolution entry without SKILL.md is reported (as missing, before mismatch)" {
+  # full sync は SKILL.md 不在のエントリを link しない。--check も緑にしないこと。
+  # 到達するのは手前の missing 判定(SKILL.md がリンク越しに引けない)で、mismatch では
+  # ないため、どちらの語で出るかまで固定する。
+  _seed_ext_skill owner/repo skills ext-skill
+  mkdir -p "$EVOLVE/active/skills/ext-skill" "$EVOLVE/active/agents"
+  printf 'owner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR"
+  ln -s "$EVOLVE/active/skills/ext-skill" "$SKILLS_DIR/ext-skill"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'missing: ext-skill' "$output"
+}
+
+@test "full: subdir forms that resolve back to the repo root are invalid, not a sweep" {
+  # src_root が repo ルートに戻る形は、宣言者が意図していない直下の全ディレクトリを
+  # link しうる。空文字列だけを弾いても `.` `/` `//` で迂回できるため、宣言 1 個ではなく
+  # 代表形をまとめて固定する。
+  _seed_ext_skill owner/repo skills good
+  mkdir -p "$FAKE_GHQ_ROOT/github.com/owner/repo/secret-dir"
+  printf '# secret\n' >"$FAKE_GHQ_ROOT/github.com/owner/repo/secret-dir/SKILL.md"
+  local form
+  for form in 'owner/repo:' 'owner/repo:.' 'owner/repo:/' 'owner/repo:./' 'owner/repo:.//'; do
+    # 失敗時、bats はこの stdout を表示する。どの form で落ちたかが行番号だけでは読めない。
+    echo "form=$form"
+    rm -rf "$SKILLS_DIR"
+    printf '%s\n' "$form" >"$FAKE_REPO/ext-skills.txt"
+    run "$SYNC"
+    [ "$status" -eq 1 ]
+    _has '不正な manifest 行' "$output"
+    [ ! -e "$SKILLS_DIR/secret-dir" ]
+  done
+}
+
+@test "full: a trailing slash on subdir is accepted, same as on a single-form path" {
+  # 単体形態は skillpath の末尾スラッシュを剥ぐので `owner/repo/skills/x/` が通る。
+  # subdir 側だけ剥がずに invalid にすると、説明のつかない非対称になる。
+  _seed_ext_skill owner/repo skills ext-skill
+  printf 'owner/repo:skills/\n' >"$FAKE_REPO/ext-skills.txt"
+  run "$SYNC"
+  [ "$status" -eq 0 ]
+  [ -L "$SKILLS_DIR/ext-skill" ]
+}
+
+@test "check: a dot segment in a single-form skill path is invalid" {
+  # `owner/repo/skills/.` は skillpath が非空なので空ガードを通り抜け、basename が `.` に
+  # なって診断が読めなくなる。
+  _seed_ext_skill owner/repo skills good
+  printf 'owner/repo/skills/.\n' >"$FAKE_REPO/ext-skills.txt"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'invalid: owner/repo/skills/.' "$output"
+  _lacks 'missing: .' "$output"
+}
+
+@test "full: a dot segment in a single-form skill path is rejected at the manifest layer" {
+  # full sync と --check は同じ行を弾くが出すメッセージが違う。--check 側だけを固定すると、
+  # full sync が manifest 層を素通りして下流(SKILL.md 不在)で落ちる状態も緑に見える。
+  _seed_ext_skill owner/repo skills good
+  printf 'owner/repo/skills/.\n' >"$FAKE_REPO/ext-skills.txt"
+  run "$SYNC"
+  [ "$status" -eq 1 ]
+  _has '不正な manifest 行' "$output"
+  _lacks 'SKILL.md なし' "$output"
+  [ ! -e "$SKILLS_DIR/skills" ]
+}
+
+@test "check: an evolution entry whose name breaks the evolve naming rule is a mismatch" {
+  # full sync は名前規約外(^[a-z0-9-]+$)のエントリを WARN + skip する。--check の例外も
+  # 同じ条件で落ちること = evolution_provides の名前判定が生きていることを固定する。
+  _seed_ext_skill owner/repo skills Ext_Skill
+  mkdir -p "$EVOLVE/active/skills/Ext_Skill" "$EVOLVE/active/agents"
+  printf '# evo\n' >"$EVOLVE/active/skills/Ext_Skill/SKILL.md"
+  printf 'owner/repo/skills/Ext_Skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR"
+  ln -s "$EVOLVE/active/skills/Ext_Skill" "$SKILLS_DIR/Ext_Skill"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'mismatch: Ext_Skill' "$output"
+  _has 'ローカル進化から link される状態にない' "$output"
+}
+
+@test "check: single-form line with an empty skill path is invalid, not a broken message" {
+  printf 'owner/repo/\n' >"$FAKE_REPO/ext-skills.txt"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'invalid: owner/repo/' "$output"
+  _lacks 'missing:  ' "$output"
+}
+
+@test "check: an invalid line does not contaminate the next valid single-form line" {
+  _seed_ext_skill owner/repo skills ext-skill
+  printf 'owner/repo:../../evil\nowner/repo/skills/ext-skill\n' >"$FAKE_REPO/ext-skills.txt"
+  mkdir -p "$SKILLS_DIR"
+  ln -s "$FAKE_GHQ_ROOT/github.com/owner/repo/skills/ext-skill" "$SKILLS_DIR/ext-skill"
+  run "$SYNC" --check
+  [ "$status" -eq 1 ]
+  _has 'invalid: owner/repo:../../evil' "$output"
+  _lacks 'invalid: owner/repo/skills/ext-skill' "$output"
+  _has 'checked=1 missing=0 mismatch=0 invalid=1' "$output"
+}
+
 @test "rejects unknown flag" {
   run "$SYNC" --nonsense
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Usage"* ]]
+  _has 'Usage' "$output"
+}
+
+@test "rejects more than one flag instead of silently honouring the first" {
+  run "$SYNC" --check --local-only
+  [ "$status" -eq 1 ]
+  _has 'Usage' "$output"
 }
