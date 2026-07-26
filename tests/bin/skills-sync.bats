@@ -326,6 +326,19 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   _lacks 'WARN: 管理外' "$output"
 }
 
+@test "unmanaged: detection is skipped when the chezmoi source layout is absent" {
+  # repo はあるが home/dot_claude が無い(レイアウト変更・パス typo・sparse checkout)。
+  # ガードを $CC_DOTFILES_DIR に張ると突合先が全件偽になり、chezmoi 管理下の実体まで
+  # 管理外として並ぶ。
+  mkdir -p "$CC_DOTFILES_DIR"
+  mkdir -p "$SKILLS_DIR/hand-placed"
+  printf 'real\n' >"$SKILLS_DIR/hand-placed/SKILL.md"
+  run "$SYNC"
+  [ "$status" -eq 0 ]
+  _has 'unmanaged=skipped(' "$output"
+  _lacks 'WARN: 管理外' "$output"
+}
+
 @test "unmanaged: presence changes neither prune count nor exit code" {
   _seed_cc_source
   mkdir -p "$SKILLS_DIR" "$BATS_TEST_TMPDIR/stale"
@@ -520,7 +533,7 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   [ -L "$SKILLS_DIR/ext-skill" ]
 }
 
-@test "full: a dot segment in a single-form skill path is invalid" {
+@test "check: a dot segment in a single-form skill path is invalid" {
   # `owner/repo/skills/.` は skillpath が非空なので空ガードを通り抜け、basename が `.` に
   # なって診断が読めなくなる。
   _seed_ext_skill owner/repo skills good
@@ -529,6 +542,18 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   [ "$status" -eq 1 ]
   _has 'invalid: owner/repo/skills/.' "$output"
   _lacks 'missing: .' "$output"
+}
+
+@test "full: a dot segment in a single-form skill path is rejected at the manifest layer" {
+  # full sync と --check は同じ行を弾くが出すメッセージが違う。--check 側だけを固定すると、
+  # full sync が manifest 層を素通りして下流(SKILL.md 不在)で落ちる状態も緑に見える。
+  _seed_ext_skill owner/repo skills good
+  printf 'owner/repo/skills/.\n' >"$FAKE_REPO/ext-skills.txt"
+  run "$SYNC"
+  [ "$status" -eq 1 ]
+  _has '不正な manifest 行' "$output"
+  _lacks 'SKILL.md なし' "$output"
+  [ ! -e "$SKILLS_DIR/skills" ]
 }
 
 @test "check: an evolution entry whose name breaks the evolve naming rule is a mismatch" {
