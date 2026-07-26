@@ -166,3 +166,15 @@ bind ? display-popup -E -w 98 -h 34 \
   -s 'bg={{ .panda.bg.hex }}' \
   -T ' tmux Cheatsheet ' \
   '~/.config/tmux/cheatsheet.sh'
+
+# ============================
+# ホーム window に相方(partner)を立てる
+# ============================
+
+# 新規セッション作成時に home window を作り、相方(cc-dotfiles の skills/partner)を起動する。
+# 相方は「作業中に思い出して呼ぶ」skill ではなく「作業を始める前に開く場所」なので、
+# 呼び出しを記憶に頼らず起動側へ埋める。判定と生成はスクリプト側(除外セッション・
+# 二重生成の防止・claude / skill 不在時の素通り)。
+# run-shell の文字列は sh -c に渡るため、セッション名ではなく ID(#{hook_session})を
+# #{q:} でクォートして渡す。名前は空白や ; を保持できるのでそのままではコマンド実行になる。
+set-hook -g session-created 'run-shell "~/.config/tmux/partner-home.sh #{q:hook_session}"'
