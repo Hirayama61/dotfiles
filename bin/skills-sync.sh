@@ -446,9 +446,9 @@ fi
 # 計上しない(prune 抑止を誘発する)。exit code も変えない。
 # 突合は chezmoi の source name と target name が一致する前提に立つ。属性 prefix
 # (private_ / exact_ 等)や .tmpl が付いたエントリは誤って管理外と報告される。
-# ガードは $CC_DOTFILES_DIR ではなく突合先そのものに張る。repo はあるが home/dot_claude が
-# 無い状態(レイアウト変更・パス typo・sparse checkout)では全件が偽になり、chezmoi 管理下の
-# 実体まで管理外として並ぶ。
+# 突合先(home/dot_claude)が無いまま走らせると全件が偽になり、chezmoi 管理下の実体まで
+# 管理外として並ぶ。repo はあるが突合先が無い状態はレイアウト変更・パス typo・
+# sparse checkout で起きる。
 cc_claude="$CC_DOTFILES_DIR/home/dot_claude"
 if [[ -d "$cc_claude" ]]; then
   for entry in "$SKILLS_DIR"/*; do
@@ -468,8 +468,8 @@ if [[ -d "$cc_claude" ]]; then
     done
   fi
 else
-  # cc-dotfiles 未 clone は正規の状態(mise.toml の apply:cc-dotfiles も skip する)。
-  # 数値のまま 0 を出すと「検査して 0 件」と区別が付かない。
+  # 突合先不在は未 clone なら正規の状態。数値のまま 0 を出すと「検査して 0 件」と
+  # 区別が付かない。
   unmanaged_display="skipped(chezmoi ソース不在: $cc_claude)"
   echo "NOTE: chezmoi ソース不在のため管理外検出をスキップしました: $cc_claude" >&2
 fi
