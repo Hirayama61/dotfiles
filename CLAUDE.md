@@ -149,18 +149,19 @@ mise run skills:sync   # ext-skills.txt を読み ghq clone/更新 → ~/.claude
 - **`--check` は収束判定のゲートには使えない**。見るのは「宣言された skill が張られているか」の一方向だけで、逆向き — 承認済みのローカル進化が `ext-skills.txt` 側の skill を上書きすべきなのに、リンクがまだ ghq 側を指したまま — は緑で通る(次の全量同期で張り替わる)。「`--check` が緑 = 同期済み」と読まない。
 - **手で張った symlink の扱いは skills と agents で非対称**。skills 側の prune は宣言集合から外れた symlink を一律に刈るので `pruned:` に出て消える。agents 側の prune はリンク先がローカル進化配下のものだけを刈るため手張りは残り、`unmanaged` にも入らないのでどこにも現れない。
 - symlink は再配布ではない(本体は ghq clone でローカルに置く)ため LICENSE 同梱不要。
-- `~/.claude/skills/` には cc-dotfiles が実体管理する skill(`obsidian-memory` 等)と ext-skills 経由 symlink の skill が混在する。**外部 skill は vendoring せず symlink** が原則(例: `empirical-prompt-tuning` は `mizchi/skills` から取り込む)。
+- `~/.claude/skills/` には cc-dotfiles が実体管理する skill(`obsidian-memory` 等)と ext-skills 経由 symlink の skill が混在する。**外部 skill は vendoring せず symlink** が原則(例: `defuddle` は `kepano/obsidian-skills` から取り込む)。
 
 ## ローカル進化 (claude-evolution)
 
-Claude Code が作業の学びから自動生成した skill/agent は、**git 管理外・マシンローカル**の
-`~/.claude-evolution/` に蓄積する(業務知識を git に載せないための分離。仕組みの正典は
-cc-dotfiles の `skills/evolve/SKILL.md`)。
+このマシンだけで使う skill/agent は、**git 管理外・マシンローカル**の
+`~/.claude-evolution/` に置く(業務知識を git に載せないための分離)。
 
-- 生成(`/evolve`)→ `candidates/`(効力なし)→ 人間トリアージ(`/evolve-gate`)→ `active/` →
-  `bin/skills-sync.sh` が `~/.claude/skills`・`~/.claude/agents` へ symlink。
-- `bin/skills-sync.sh --local-only` は ghq 同期と prune をスキップしローカル進化のみ反映
-  (evolve-gate の承認経路用)。
+- `~/.claude-evolution/active/` に置いた skill/agent を `bin/skills-sync.sh` が
+  `~/.claude/skills`・`~/.claude/agents` へ symlink する。`candidates/` 配下は対象外で、
+  active/ へ移すまで効力を持たない。
+- `bin/skills-sync.sh --local-only` は ghq 同期と prune をスキップし、ローカル進化だけを
+  張り直す軽量モード(ネットワークを使わない。prune しないので外部 skill の symlink は
+  消えないが、同名のローカル進化があるとその名前だけ張り替わる)。
 - 作成側の衝突ガード: 宛先が実体(chezmoi 管理)のときは WARN + skip し、実体を symlink で
   上書きしない。prune は従来どおり symlink のみ対象。
 
