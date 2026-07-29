@@ -160,7 +160,8 @@ mise run skills:sync   # ext-skills.txt を読み ghq clone/更新 → ~/.claude
   `~/.claude/skills`・`~/.claude/agents` へ symlink する。`candidates/` 配下は対象外で、
   active/ へ移すまで効力を持たない。
 - `bin/skills-sync.sh --local-only` は ghq 同期と prune をスキップし、ローカル進化だけを
-  張り直す軽量モード(ネットワークを使わず、外部 skill の symlink も触らない)。
+  張り直す軽量モード(ネットワークを使わない。prune しないので外部 skill の symlink は
+  消えないが、同名のローカル進化があるとその名前だけ張り替わる)。
 - 作成側の衝突ガード: 宛先が実体(chezmoi 管理)のときは WARN + skip し、実体を symlink で
   上書きしない。prune は従来どおり symlink のみ対象。
 

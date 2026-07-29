@@ -6,8 +6,8 @@
 #
 # 実行: mise run skills:sync
 #       bin/skills-sync.sh --local-only   (ローカル進化のみ反映。ghq 同期と prune を
-#                                          スキップする軽量モード。active/ に置いたものだけを
-#                                          張り直し、外部 skill の symlink には触れない)
+#                                          スキップする軽量モード。prune しないので外部 skill の
+#                                          symlink は消えないが、同名があれば張り替わる)
 #       bin/skills-sync.sh --check        (宣言 ↔ symlink の照合のみ。ghq もネットワークも
 #                                          呼ばず副作用ゼロ。missing / mismatch / invalid の
 #                                          いずれかがあれば exit 1)
