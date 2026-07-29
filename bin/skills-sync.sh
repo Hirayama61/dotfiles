@@ -6,7 +6,8 @@
 #
 # 実行: mise run skills:sync
 #       bin/skills-sync.sh --local-only   (ローカル進化のみ反映。ghq 同期と prune を
-#                                          スキップする evolve-gate 承認経路用の軽量モード)
+#                                          スキップする軽量モード。active/ に置いたものだけを
+#                                          張り直し、外部 skill の symlink には触れない)
 #       bin/skills-sync.sh --check        (宣言 ↔ symlink の照合のみ。ghq もネットワークも
 #                                          呼ばず副作用ゼロ。missing / mismatch / invalid の
 #                                          いずれかがあれば exit 1)
@@ -26,9 +27,8 @@ set -euo pipefail
 
 SKILLS_DIR="$HOME/.claude/skills"
 AGENTS_DIR="$HOME/.claude/agents"
-# ローカル進化ディレクトリ(git 管理外・マシンローカル)。パスは固定で、規約の正典は
-# cc-dotfiles の skills/evolve/SKILL.md(env override を置かないのは、hook の候補数走査・
-# evolve/evolve-gate・本スクリプトの 4 参照箇所の乖離を防ぐため)。
+# ローカル進化ディレクトリ(git 管理外・マシンローカル)。パスは固定(env override を置くと
+# 参照側ごとに違う場所を見る余地が生まれるため)。
 EVOLVE_DIR="$HOME/.claude-evolution"
 MANIFEST="$(cd "$(dirname "$0")/.." && pwd)/ext-skills.txt"
 # ~/.claude/ の実体を管理する chezmoi ソース。mise.toml の [env] と同値を既定に置き、
@@ -365,8 +365,8 @@ fi
 # ── ソース 2: ローカル進化(~/.claude-evolution/active)──
 # ディレクトリ不在・空は正常(まだ何も承認されていないマシン)。failed 計上しない。
 # symlink 経由で candidates/ が効力を持つ経路を、エントリ単位 + 親階層の両方で塞ぐ
-# (「candidates は効力を持たない」の実装側担保)。名前は evolve の規約 ^[a-z0-9-]+$ に
-# 一致するものだけ link する(evolve-gate の退避 .prev や不正名を有効化しない)。
+# (「candidates は効力を持たない」の実装側担保)。名前が ^[a-z0-9-]+$ に一致するものだけ
+# link する(.prev のような退避ディレクトリや不正名を有効化しない)。
 if ! evolve_hierarchy_ok; then
   echo "WARN: ローカル進化の階層が symlink のため全 skip: $evolve_symlink_path" >&2
   failed=$((failed + 1))

@@ -556,7 +556,7 @@ _seed_ext_skill() { # <owner/repo> <subdir> <name>
   [ ! -e "$SKILLS_DIR/skills" ]
 }
 
-@test "check: an evolution entry whose name breaks the evolve naming rule is a mismatch" {
+@test "check: an evolution entry whose name breaks the naming rule is a mismatch" {
   # full sync は名前規約外(^[a-z0-9-]+$)のエントリを WARN + skip する。--check の例外も
   # 同じ条件で落ちること = evolution_provides の名前判定が生きていることを固定する。
   _seed_ext_skill owner/repo skills Ext_Skill
