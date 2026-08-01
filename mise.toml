@@ -64,13 +64,16 @@ fi
 """
 
 [tasks.update]
-description = "両リポを git pull → apply"
+description = "両リポを git pull → apply → 新規ツールの取得"
+# mise install は apply の後に置く。global config(~/.config/mise/config.toml)は
+# apply が配置するので、先に install すると pull で増えたツール宣言をまだ読めない。
 run = """
 git -C "$MISE_PROJECT_ROOT" pull --ff-only
 if [[ -d "$CC_DOTFILES_DIR" ]]; then
   git -C "$CC_DOTFILES_DIR" pull --ff-only
 fi
 mise run apply
+mise install
 """
 
 # ─── セットアップ ─────────────────────────────────────
