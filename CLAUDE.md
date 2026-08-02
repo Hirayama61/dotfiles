@@ -51,7 +51,7 @@ mise run apply            # 両リポ適用(削除自動化込み)
 mise run apply:dotfiles   # このリポだけ
 mise run apply:cc-dotfiles     # cc-dotfiles だけ(リポが clone されてなければ skip)
 mise run diff             # 両リポの pending diff
-mise run update           # 両リポ git pull → apply
+mise run update           # 両リポ git pull → apply → 新規ツール install
 ```
 
 ## 削除自動化の仕組み
