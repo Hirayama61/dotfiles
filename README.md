@@ -34,7 +34,7 @@ mise run apply            # 両リポ適用
 mise run apply:dotfiles   # このリポのみ
 mise run apply:cc-dotfiles     # cc-dotfiles のみ
 mise run diff             # 適用前差分
-mise run update           # git pull → apply
+mise run update           # git pull → apply → 新規ツール install
 ```
 
 ## 構成

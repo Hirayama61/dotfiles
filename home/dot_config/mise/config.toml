@@ -18,6 +18,7 @@ ripgrep = "latest"      # Neovim Telescope live_grep の必須依存。grep 代�
 fd = "latest"           # Neovim Telescope find_files 高速化(無いと find fallback で低速)
 node = "lts"
 "npm:@antfu/ni" = "latest"
+"npm:difit" = "latest"  # ローカル差分ビューア。/difit skill が目視レビューで起動する
 rust = { version = "latest", components = "rust-analyzer" }
 
 # シェルスクリプト品質ゲート。グローバル git pre-commit から mise exec で呼ぶ。
