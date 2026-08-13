@@ -76,6 +76,31 @@ chezmoi はソースから消えたファイルの target を自動削除しな�
   して他人のハンドル/個人リポ名・トークン接頭辞などを追記。
 - 誤検知時のみ `git commit --no-verify`。リスト不在/staged 空なら素通し。
 
+同じ pre-commit が secretlint による秘密情報スキャンも行う。こちらは自分で列挙する
+機密語と違い、`ghp_` / AWS キー / 秘密鍵ブロックなど**一般的なトークン形式**を
+preset のルールで検出する。
+
+- 設定 `home/dot_secretlintrc.json`(→ `~/.secretlintrc.json`)は **dotfiles 管理**。
+  secretlint は cwd から上位へ設定を探すため、`~` に置けば `~/ghq/...` 配下の全リポで効く。
+- **設定が無いと secretlint は exit 2 で終了する**。hook はこれを検出(exit 1)と区別し、
+  警告のみで素通しする。区別を失うと設定の置き忘れだけで全リポのコミットが止まる。
+- `xargs` を挟むと子の exit 1〜125 が一律 123 に潰れて区別できなくなるため、
+  staged ファイルは配列に読んで secretlint を直接起動する。
+
+## ローカル hook のチェーン
+
+`core.hooksPath` をグローバル設定しているため、git は各リポの husky / lefthook /
+`.git/hooks` を**完全にバイパスする**。グローバル hook 側から明示委譲して両立させている。
+
+- 委譲順は husky → lefthook → `.git/hooks`。見つかった時点で exec するため後続は走らない。
+- 実体があるのは `pre-commit` / `commit-msg` / `pre-push` の3本。**これ以外の hook 名
+  (post-commit / prepare-commit-msg 等)はリポ側 hook が無視される**。必要になったら
+  `private_executable_pre-push` に倣って委譲だけを行う hook を足す。
+- `pre-push` はグローバル側の検査を持たず委譲だけを行う。引数(remote 名 / URL)と
+  stdin(push 対象の ref)は exec でそのまま引き継がれる。
+- 逆にリポ側で `core.hooksPath` を設定すると**グローバル hook が丸ごと止まる**
+  (husky / lefthook の install がこれを行う)。機密語ガードごと無効になる点に注意。
+
 ## macOS システム設定 (defaults / pmset / nvram)
 
 `bin/macos-defaults.sh` が `defaults write` / `pmset` / `nvram` で macOS の **システム側グローバル設定** を一括投入する。chezmoi(`$HOME` 配下のファイル管理)とは別レイヤー。

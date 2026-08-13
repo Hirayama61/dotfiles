@@ -1,0 +1,83 @@
+#!/usr/bin/env bats
+# pre-push の E2E。この hook はグローバル側の検査を持たず、core.hooksPath の
+# グローバル設定で git がバイパスするリポ固有 hook を代わりに起動するのが役割。
+# 委譲先の優先順(husky → lefthook → .git/hooks)と、引数・stdin・終了コードが
+# そのまま引き継がれることを固定する。
+
+load ../helpers/common
+
+setup() {
+  setup_repo
+}
+
+# 実行された事実と受け取った引数を出力するローカル hook を置く。
+write_local_hook() {
+  local path="$1" label="$2" exit_code="${3:-0}"
+  mkdir -p "$(dirname "$REPO/$path")"
+  cat >"$REPO/$path" <<SH
+#!/bin/sh
+echo "$label \$1 \$2"
+cat
+exit $exit_code
+SH
+  chmod +x "$REPO/$path"
+}
+
+@test "no local hook: passes without blocking the push" {
+  run_prepush
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "husky pre-push is executed" {
+  write_local_hook .husky/pre-push HUSKY
+  run_prepush
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"HUSKY"* ]]
+}
+
+@test "local .git/hooks/pre-push is executed" {
+  write_local_hook .git/hooks/pre-push LOCAL
+  run_prepush
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"LOCAL"* ]]
+}
+
+@test "husky takes precedence over .git/hooks" {
+  write_local_hook .husky/pre-push HUSKY
+  write_local_hook .git/hooks/pre-push LOCAL
+  run_prepush
+  [[ "$output" == *"HUSKY"* ]]
+  [[ "$output" != *"LOCAL"* ]]
+}
+
+@test "lefthook runs when its config exists" {
+  printf 'pre-push:\n' >"$REPO/lefthook.yml"
+  cat >"$MISE_SHIM_DIR/lefthook" <<'SH'
+#!/usr/bin/env bash
+echo "LEFTHOOK $*"
+SH
+  chmod +x "$MISE_SHIM_DIR/lefthook"
+  run_prepush
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"LEFTHOOK run pre-push"* ]]
+}
+
+@test "remote name and url are passed through to the local hook" {
+  write_local_hook .git/hooks/pre-push LOCAL
+  run_prepush
+  [[ "$output" == *"LOCAL origin https://example.invalid/repo.git"* ]]
+}
+
+# push 対象の ref は stdin 経由でしか渡らない。exec 委譲で fd が引き継がれることを見る。
+@test "stdin refs reach the local hook" {
+  write_local_hook .git/hooks/pre-push LOCAL
+  run_prepush "refs/heads/main 0000 refs/heads/main 1111"
+  [[ "$output" == *"refs/heads/main 0000"* ]]
+}
+
+@test "a failing local hook blocks the push" {
+  write_local_hook .git/hooks/pre-push LOCAL 1
+  run_prepush
+  [ "$status" -eq 1 ]
+}
