@@ -26,7 +26,9 @@ if [ -f "lefthook.yml" ] || [ -f "lefthook.yaml" ]; then
 fi
 
 # 標準ローカルフック(.git/hooks/pre-push)
-git_dir=$(git rev-parse --git-dir 2>/dev/null || true)
+# linked worktree では --git-dir が .git/worktrees/<名前> を指し hooks/ を持たない。
+# git 自身は共有側で hook を解決するので、判定も --git-common-dir に合わせる。
+git_dir=$(git rev-parse --git-common-dir 2>/dev/null || true)
 if [ -n "$git_dir" ] && [ -x "$git_dir/hooks/pre-push" ]; then
   exec "$git_dir/hooks/pre-push" "$@"
 fi

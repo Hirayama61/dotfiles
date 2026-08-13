@@ -75,17 +75,26 @@ chezmoi はソースから消えたファイルの target を自動削除しな�
 - 初期配置: `cp template/sensitive-words.txt.example ~/.config/git/sensitive-words.txt`
   して他人のハンドル/個人リポ名・トークン接頭辞などを追記。
 - 誤検知時のみ `git commit --no-verify`。リスト不在/staged 空なら素通し。
+- **追加行が 1 行も無いコミット(rename のみ・削除のみ等)は、機密語ガードの早期 return で
+  以降の secretlint / shfmt / shellcheck ごと skip される**。新しい内容が入らないので
+  秘密の新規混入は起きないが、この形のコミットにガードは掛からない。
 
 同じ pre-commit が secretlint による秘密情報スキャンも行う。こちらは自分で列挙する
 機密語と違い、`ghp_` / AWS キー / 秘密鍵ブロックなど**一般的なトークン形式**を
 preset のルールで検出する。
 
 - 設定 `home/dot_secretlintrc.json`(→ `~/.secretlintrc.json`)は **dotfiles 管理**。
-  secretlint は cwd から上位へ設定を探すため、`~` に置けば `~/ghq/...` 配下の全リポで効く。
-- **設定が無いと secretlint は exit 2 で終了する**。hook はこれを検出(exit 1)と区別し、
-  警告のみで素通しする。区別を失うと設定の置き忘れだけで全リポのコミットが止まる。
-- `xargs` を挟むと子の exit 1〜125 が一律 123 に潰れて区別できなくなるため、
-  staged ファイルは配列に読んで secretlint を直接起動する。
+  hook は `--secretlintrc` でこのパスを明示する。探索任せにすると、リポ直下に置かれた
+  `.secretlintrc` でルールを空にされて警告なくガードが無効化され、`$HOME` 外
+  (`/tmp` 等)のリポでは設定が見つからず検査自体が成立しない。
+- `--no-gitignore` と `--` は省略しない。前者が無いと `git add -f` した無視対象が
+  走査から外れ、後者が無いと `-n` のような名前が staged にあるだけでオプションと
+  解釈され、そのコミット全体が走査されないまま通る。
+- **起動後の非 0 は検出・実行失敗を問わず block する**。素通しにすると走査されなかった
+  コミットが警告 1 行で通り、ガードが効いていないことに気付けない。
+  警告のみで通すのは secretlint / preset / 設定ファイルが**不在**のときだけ。
+- `xargs` は子の exit 1〜125 を一律 123 に潰すため使わない。staged ファイルは配列に
+  読んで secretlint を直接起動する。
 
 ## ローカル hook のチェーン
 
@@ -96,8 +105,12 @@ preset のルールで検出する。
 - 実体があるのは `pre-commit` / `commit-msg` / `pre-push` の3本。**これ以外の hook 名
   (post-commit / prepare-commit-msg 等)はリポ側 hook が無視される**。必要になったら
   `private_executable_pre-push` に倣って委譲だけを行う hook を足す。
-- `pre-push` はグローバル側の検査を持たず委譲だけを行う。引数(remote 名 / URL)と
-  stdin(push 対象の ref)は exec でそのまま引き継がれる。
+- `pre-push` はグローバル側の検査を持たず委譲だけを行う。stdin(push 対象の ref)は
+  全経路で、引数(remote 名 / URL)は husky と `.git/hooks` の経路で引き継がれる
+  (lefthook は `lefthook run pre-push` で起動するため引数は渡さない)。
+- 委譲先の判定には `git rev-parse --git-common-dir` を使う。linked worktree では
+  `--git-dir` が `.git/worktrees/<名前>` を指し、そこに `hooks/` が無いため
+  **worktree 内での委譲が黙って無効になる**。
 - 逆にリポ側で `core.hooksPath` を設定すると**グローバル hook が丸ごと止まる**
   (husky / lefthook の install がこれを行う)。機密語ガードごと無効になる点に注意。
 

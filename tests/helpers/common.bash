@@ -60,13 +60,27 @@ SH
   chmod +x "$MISE_SHIM_DIR/$1"
 }
 
-# secretlint 段を有効化する。この段は preset dir の where 解決に成功しないと
-# 入れないため、shim に返させるダミー dir を用意したうえで fake を置く。
-# preset dir の中身は NODE_PATH に渡されるだけで hook は参照しない。
+# secretlint 段を有効化する。この段へ入るには preset dir の where 解決と
+# ~/.secretlintrc.json の実在が要る。preset dir の中身は NODE_PATH に渡されるだけ、
+# rc は --secretlintrc の引数として渡されるだけで、どちらも fake は読まない。
 enable_secretlint() {
   export MISE_WHERE_DIR="$BATS_TEST_TMPDIR/preset"
   mkdir -p "$MISE_WHERE_DIR/lib/node_modules"
+  printf '{"rules":[]}\n' >"$HOME/.secretlintrc.json"
   fake_tool secretlint "${1:-0}"
+}
+
+# 受け取った argv を記録し、指定のメッセージを出して終わる fake secretlint。
+# argv の検証と、hook が出力をどう転送するかの観測に使う。
+# メッセージは printf %b で展開するので \033 等のエスケープを書ける。
+fake_secretlint_reporting() {
+  cat >"$MISE_SHIM_DIR/secretlint" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >"$BATS_TEST_TMPDIR/secretlint-argv"
+printf '%b\n' '$2'
+exit $1
+SH
+  chmod +x "$MISE_SHIM_DIR/secretlint"
 }
 
 # 整形対象ファイル(最終引数)を実際に書き換えて成功する fake shfmt。
@@ -106,13 +120,19 @@ run_precommit() {
   set -e
 }
 
-# run_prepush [stdin に流す ref 行]。git が渡すのと同じ remote 引数で pre-push を起動。
-run_prepush() {
+# run_prepush_at <実行ディレクトリ> [stdin に流す ref 行]。
+# git が渡すのと同じ remote 引数で pre-push を起動する。
+run_prepush_at() {
   set +e
-  output="$(cd "$REPO" && printf '%s' "${1:-}" |
+  output="$(cd "$1" && printf '%s' "${2:-}" |
     bash "$PREPUSH_HOOK" origin https://example.invalid/repo.git 2>&1)"
   status=$?
   set -e
+}
+
+# run_prepush [stdin に流す ref 行]。$REPO で起動する。
+run_prepush() {
+  run_prepush_at "$REPO" "${1:-}"
 }
 
 # run_commitmsg <メッセージ>。一時メッセージファイルを作って commit-msg を起動。

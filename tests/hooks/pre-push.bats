@@ -81,3 +81,40 @@ SH
   run_prepush
   [ "$status" -eq 1 ]
 }
+
+# linked worktree では --git-dir が .git/worktrees/<名前> を指し hooks/ を持たない。
+# 判定を誤ると worktree 内の push で委譲が黙って止まる(このリポは worktree 運用)。
+@test "linked worktree: the hook under the common git dir is executed" {
+  write_local_hook .git/hooks/pre-push LOCAL
+  stage_file seed.txt "hello"
+  commit_repo "seed"
+  git -C "$REPO" worktree add -q "$BATS_TEST_TMPDIR/wt" -b wt-branch
+  run_prepush_at "$BATS_TEST_TMPDIR/wt"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"LOCAL"* ]]
+}
+
+# lefthook.yml はあるがバイナリが PATH に無い場合。mise 側の解決へ回る。
+@test "lefthook resolved through mise when not on PATH" {
+  printf 'pre-push:\n' >"$REPO/lefthook.yml"
+  cat >"$MISE_SHIM_DIR/lefthook" <<'SH'
+#!/usr/bin/env bash
+echo "LEFTHOOK_VIA_MISE $*"
+SH
+  chmod +x "$MISE_SHIM_DIR/lefthook"
+  # shim dir は PATH 上にあるので command -v が先に当たる。PATH から外して
+  # mise which/exec 経由の分岐だけを踏ませる。
+  PATH="$(dirname "$(command -v git)"):/usr/bin:/bin" \
+    MISE_SHIM_DIR="$MISE_SHIM_DIR" \
+    run_prepush_at "$REPO"
+  [ "$status" -eq 0 ]
+}
+
+# lefthook.yml はあるがどちらの経路でも見つからない場合は .git/hooks へ落ちる。
+@test "falls through to .git/hooks when lefthook is unavailable" {
+  printf 'pre-push:\n' >"$REPO/lefthook.yml"
+  write_local_hook .git/hooks/pre-push LOCAL
+  run_prepush
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"LOCAL"* ]]
+}

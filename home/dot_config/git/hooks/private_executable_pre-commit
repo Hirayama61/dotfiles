@@ -59,38 +59,45 @@ fi
 # mise の npm 隔離インストールでは secretlint 本体と preset-recommend が別の
 # install ディレクトリに入り secretlint のリゾルバが preset を解決できない。
 # preset の node_modules を NODE_PATH で明示してこれを回避する。
-# secretlint / preset 不在時は警告のみで素通し(他ブロックの方針に合わせる)。
-# 実行できなかった場合(.secretlintrc 不在など)も同じく素通しする。ここを block に
-# すると設定を1つ置き忘れただけで全リポの全コミットが止まる。
+# secretlint / preset / 設定ファイルの不在時は警告のみで素通し(他ブロックの方針に
+# 合わせる)。起動できた後の非 0 は検出・実行失敗を問わず block する — 素通しにすると
+# 走査されなかったコミットが警告 1 行で通り、ガードの不在に気付けない。
 
 if mise which secretlint >/dev/null 2>&1; then
   preset_dir=$(mise where "npm:@secretlint/secretlint-rule-preset-recommend" 2>/dev/null || true)
+  secretlintrc="$HOME/.secretlintrc.json"
   if [ -z "$preset_dir" ]; then
     echo "警告: secretlint preset が見つかりません。mise install を実行してください。" >&2
+  elif [ ! -f "$secretlintrc" ]; then
+    echo "警告: $secretlintrc がありません。mise run apply を実行してください。" >&2
   else
-    staged_count=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | wc -l | tr -d ' ')
-    if [ "$staged_count" -gt 0 ]; then
-      # xargs は子コマンドの exit 1〜125 を一律 123 に潰す。検出(1)と実行不能(2)を
-      # 区別するため xargs を挟まず secretlint を直接起動する。NUL 区切りの読み出しは
-      # bash 3.2(macOS 同梱)に mapfile が無いため read -d '' のループで行う。
-      secret_files=()
-      while IFS= read -r -d '' secret_file; do
-        secret_files+=("$secret_file")
-      done < <(git diff --cached --name-only -z --diff-filter=ACM)
+    # 走査対象は staged の追加/変更/rename 後のパス。R を落とすと git mv してから
+    # 秘密を書き足す経路が漏れる(上の機密語ガードは ACMR で揃っている)。
+    # NUL 区切りの読み出しは bash 3.2(macOS 同梱)に mapfile が無いためループで行う。
+    secret_files=()
+    while IFS= read -r -d '' secret_file; do
+      secret_files+=("$secret_file")
+    done < <(git diff --cached --name-only -z --diff-filter=ACMR)
 
-      # set -e 下では代入の失敗がその場で hook を終わらせるため、|| で status を受ける。
+    if [ "${#secret_files[@]}" -gt 0 ]; then
+      # 設定は cwd から上位へ探索されるため、パスを固定しないとリポ直下の
+      # .secretlintrc でルールを空にされ、警告なくガードごと無効化される。
+      # $HOME 外(/tmp 等)のリポでは探索が届かず検査自体が成立しない。
+      # --no-gitignore が無いと git add -f した無視対象ファイルが走査から外れる。
+      # -- が無いと `-n` のような名前が staged にあるだけでオプションと解釈され、
+      # パースエラーでそのコミット全体が走査されないまま終わる。
+      # set -e 下では代入の失敗がその場で hook を終わらせるため || で status を受ける。
       secretlint_status=0
       secretlint_out=$(NODE_PATH="$preset_dir/lib/node_modules" \
-        mise exec -- secretlint "${secret_files[@]}" 2>&1) || secretlint_status=$?
+        mise exec -- secretlint --secretlintrc "$secretlintrc" --no-gitignore \
+        -- "${secret_files[@]}" 2>&1) || secretlint_status=$?
 
-      if [ "$secretlint_status" -eq 1 ]; then
-        printf '%s\n' "$secretlint_out" >&2
-        echo "ERROR: secretlint が秘密情報を検出しました。コミットを中止しました。" >&2
+      if [ "$secretlint_status" -ne 0 ]; then
+        # 出力は staged ファイルの内容由来。端末制御文字(ESC 等)を落としてから見せる。
+        printf '%s\n' "$secretlint_out" | tr -d '\000-\010\013\014\016-\037\177' >&2
+        echo "ERROR: secretlint が秘密情報を検出したか、実行に失敗しました(exit $secretlint_status)。" >&2
         echo "誤検知の場合のみ git commit --no-verify で回避してください。" >&2
         exit 1
-      elif [ "$secretlint_status" -ne 0 ]; then
-        echo "警告: secretlint を実行できませんでした(exit $secretlint_status)。スキップします。" >&2
-        printf '%s\n' "$secretlint_out" >&2
       fi
     fi
   fi
@@ -166,7 +173,9 @@ if [ -f "lefthook.yml" ] || [ -f "lefthook.yaml" ]; then
 fi
 
 # 標準ローカルフック(.git/hooks/pre-commit)
-git_dir=$(git rev-parse --git-dir 2>/dev/null || true)
+# linked worktree では --git-dir が .git/worktrees/<名前> を指し hooks/ を持たない。
+# git 自身は共有側で hook を解決するので、判定も --git-common-dir に合わせる。
+git_dir=$(git rev-parse --git-common-dir 2>/dev/null || true)
 if [ -n "$git_dir" ] && [ -x "$git_dir/hooks/pre-commit" ]; then
   exec "$git_dir/hooks/pre-commit" "$@"
 fi

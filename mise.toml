@@ -156,8 +156,9 @@ run = "bats --recursive tests"
 
 [tasks.lint]
 description = "shellcheck で git hooks / bin 配下の全シェルスクリプトを検査(error レベル)"
-# hooks は拡張子を持たないため名前で絞らず全件を対象にする。hook が増えても
-# タスク側の更新が要らない代わりに、列挙が 0 件のまま緑になる経路を件数ガードで塞ぐ。
+# hooks は拡張子を持たないので chezmoi の属性 prefix で絞る。hook が増えてもタスク側の
+# 更新が要らず、同ディレクトリに置いた非シェルファイルを掴んで落ちることもない。
+# 絞り込みが空振りしても緑になる経路は件数ガードで塞ぐ。
 # bin は find で再帰列挙(将来のサブディレクトリも網羅)。-print0|xargs -0 で空集合時は
 # 無起動(literal 渡り fail を回避)、非0 は xargs 経由で mise の set -e に伝播する。
 # .pane-*.sh は bin/demo.sh が実行時に生成する追跡外ファイル。demo を走らせたマシンだけ
@@ -165,9 +166,9 @@ description = "shellcheck で git hooks / bin 配下の全シェルスクリプ�
 # 将来 bin/demo/ に置く手書きスクリプトは検査対象に残る。
 run = """
 set -o pipefail
-hook_n="$(find home/dot_config/git/hooks -type f | wc -l | tr -d ' ')"
+hook_n="$(find home/dot_config/git/hooks -type f -name 'private_executable_*' | wc -l | tr -d ' ')"
 [ "$hook_n" -gt 0 ] || { echo "git hook の検査対象が 0 件。中断" >&2; exit 1; }
-find home/dot_config/git/hooks -type f -print0 | xargs -0 shellcheck --severity=error
+find home/dot_config/git/hooks -type f -name 'private_executable_*' -print0 | xargs -0 shellcheck --severity=error
 find bin -type f -name '*.sh' -not -name '.pane-*.sh' -print0 | xargs -0 shellcheck --severity=error
 """
 
@@ -177,9 +178,9 @@ description = "bash 3.2(macOS 同梱)構文チェック(hook + bin 配下の全�
 # 件数ガードと .pane-*.sh の除外理由は lint タスクのコメント参照。
 run = """
 set -o pipefail
-hook_n="$(find home/dot_config/git/hooks -type f | wc -l | tr -d ' ')"
+hook_n="$(find home/dot_config/git/hooks -type f -name 'private_executable_*' | wc -l | tr -d ' ')"
 [ "$hook_n" -gt 0 ] || { echo "git hook の検査対象が 0 件。中断" >&2; exit 1; }
-find home/dot_config/git/hooks -type f -print0 | xargs -0 -n1 /bin/bash -n
+find home/dot_config/git/hooks -type f -name 'private_executable_*' -print0 | xargs -0 -n1 /bin/bash -n
 find bin -type f -name '*.sh' -not -name '.pane-*.sh' -print0 | xargs -0 -n1 /bin/bash -n
 """
 

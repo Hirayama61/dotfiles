@@ -99,19 +99,18 @@ setup() {
   stage_file note.txt "hello"
   run_precommit
   [ "$status" -eq 1 ]
-  [[ "$output" == *"秘密情報を検出"* ]]
+  [[ "$output" == *"exit 1"* ]]
 }
 
-# secretlint は .secretlintrc 不在で exit 2 になる。ここを block 扱いにすると
-# 設定を置き忘れた全リポでコミットが止まるため、素通しであることを固定する。
-@test "secretlint execution failure (exit 2) warns and passes" {
+# 走らなかったコミットを通すと、ガードが効いていないことに誰も気付けない。
+# 非 0 は検出と実行失敗を区別せず止める。
+@test "secretlint execution failure (exit 2) also blocks the commit" {
   enable_secretlint 2
   write_words 'NOSUCHSECRET_XYZ'
   stage_file note.txt "hello"
   run_precommit
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"secretlint を実行できませんでした(exit 2)"* ]]
-  [[ "$output" != *"秘密情報を検出"* ]]
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"exit 2"* ]]
 }
 
 @test "secretlint clean run (exit 0) passes without warning" {
@@ -121,4 +120,70 @@ setup() {
   run_precommit
   [ "$status" -eq 0 ]
   [[ "$output" != *"secretlint"* ]]
+}
+
+# 設定不在は「検査できない」であって「検出した」ではない。dotfiles 未適用の
+# マシンでコミットを止めないため、ここだけは警告して素通しする。
+@test "missing ~/.secretlintrc.json warns and skips the scan" {
+  enable_secretlint 1
+  rm -f "$HOME/.secretlintrc.json"
+  write_words 'NOSUCHSECRET_XYZ'
+  stage_file note.txt "hello"
+  run_precommit
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".secretlintrc.json がありません"* ]]
+}
+
+@test "secretlint receives the staged paths, the rc path and the guard options" {
+  enable_secretlint 0
+  fake_secretlint_reporting 0 ''
+  write_words 'NOSUCHSECRET_XYZ'
+  stage_file note.txt "hello"
+  run_precommit
+  [ "$status" -eq 0 ]
+  run cat "$BATS_TEST_TMPDIR/secretlint-argv"
+  [[ "$output" == *"--secretlintrc $HOME/.secretlintrc.json"* ]]
+  [[ "$output" == *"--no-gitignore"* ]]
+  [[ "$output" == *"-- note.txt"* ]]
+}
+
+# 何が引っかかったか分からないと直しようがないので、検出内容を握り潰さない。
+@test "detection output is forwarded to the developer" {
+  enable_secretlint 1
+  fake_secretlint_reporting 1 'note.txt 1:7 error [GITHUB_TOKEN] found'
+  write_words 'NOSUCHSECRET_XYZ'
+  stage_file note.txt "hello"
+  run_precommit
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"[GITHUB_TOKEN] found"* ]]
+}
+
+# 出力は staged ファイルの内容由来。ESC を通すと直後のブロック表示を偽装できる。
+@test "terminal control characters are stripped from the forwarded output" {
+  enable_secretlint 1
+  fake_secretlint_reporting 1 'note.txt \033[2Kspoofed'
+  write_words 'NOSUCHSECRET_XYZ'
+  stage_file note.txt "hello"
+  run_precommit
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"spoofed"* ]]
+  [[ "$output" != *$'\033'* ]]
+}
+
+# git mv してから秘密を書き足す経路。機密語ガード(ACMR)と対象を揃える。
+@test "renamed files are included in the scan" {
+  enable_secretlint 0
+  fake_secretlint_reporting 0 ''
+  write_words 'NOSUCHSECRET_XYZ'
+  stage_file old.txt "hello"
+  commit_repo "seed"
+  git -C "$REPO" mv old.txt new.txt
+  # 追加行がまったく無いと機密語ガードの早期 return で hook ごと終わるため、
+  # rename に内容変更を伴わせる(秘密を書き足す実際の経路と同じ形)。
+  printf '%s\n' "hello" "added line" >"$REPO/new.txt"
+  git -C "$REPO" add new.txt
+  run_precommit
+  [ "$status" -eq 0 ]
+  run cat "$BATS_TEST_TMPDIR/secretlint-argv"
+  [[ "$output" == *"new.txt"* ]]
 }
