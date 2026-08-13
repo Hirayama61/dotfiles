@@ -190,13 +190,20 @@ setup() {
   enable_secretlint 0
   fake_secretlint_reporting 0 ''
   write_words 'NOSUCHSECRET_XYZ'
-  stage_file old.txt "hello"
+  # 1 行ファイルを rename すると git は類似度を取れず A + D として記録するため、
+  # R を落としても ACM で拾えてしまい R の扱いを固定できない。R と判定される
+  # 程度の行数を持たせる。追加行が無いと機密語ガードの早期 return で hook ごと
+  # 終わるので、rename に内容変更も伴わせる(秘密を書き足す実際の経路と同じ形)。
+  printf 'line %s\n' 1 2 3 4 5 6 7 8 9 10 >"$REPO/old.txt"
+  git -C "$REPO" add old.txt
   commit_repo "seed"
   git -C "$REPO" mv old.txt new.txt
-  # 追加行がまったく無いと機密語ガードの早期 return で hook ごと終わるため、
-  # rename に内容変更を伴わせる(秘密を書き足す実際の経路と同じ形)。
-  printf '%s\n' "hello" "added line" >"$REPO/new.txt"
+  printf 'line %s\n' 1 2 3 4 5 6 7 8 9 10 11 >"$REPO/new.txt"
   git -C "$REPO" add new.txt
+
+  run git -C "$REPO" diff --cached --name-status
+  [[ "$output" == R* ]]
+
   run_precommit
   [ "$status" -eq 0 ]
   run cat "$BATS_TEST_TMPDIR/secretlint-argv"
