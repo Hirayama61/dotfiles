@@ -8,3 +8,5 @@
 kepano/obsidian-skills/skills/obsidian-markdown        # MIT. OFM 記法(wikilink/callout/properties)。これだけ単体取得
 kepano/obsidian-skills/skills/defuddle                 # MIT. HTML→Markdown 抽出。bases/canvas/cli は取り込まない
 mattpocock/skills/skills/engineering/grill-with-docs   # MIT. カテゴリ階層ネストの monorepo から 1 skill だけ単体 symlink
+mattpocock/skills/skills/engineering/codebase-design   # MIT. deep module 設計の語彙(model-invoked)。設計層を担い coding-standards.md の記述層と補完
+mattpocock/skills/skills/engineering/domain-modeling   # MIT. 用語集と ADR の育成(model-invoked)。書き先は doc-gravity で vault へ上書き
