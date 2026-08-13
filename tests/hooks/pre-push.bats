@@ -102,12 +102,17 @@ SH
 echo "LEFTHOOK_VIA_MISE $*"
 SH
   chmod +x "$MISE_SHIM_DIR/lefthook"
-  # shim dir は PATH 上にあるので command -v が先に当たる。PATH から外して
-  # mise which/exec 経由の分岐だけを踏ませる。
-  PATH="$(dirname "$(command -v git)"):/usr/bin:/bin" \
-    MISE_SHIM_DIR="$MISE_SHIM_DIR" \
-    run_prepush_at "$REPO"
+
+  # shim dir が PATH 上にあると command -v lefthook が先に当たる。mise だけを別 dir で
+  # PATH に残し、lefthook は mise which/exec 経由でしか解決できない状態にする。
+  mise_only="$BATS_TEST_TMPDIR/misebin"
+  mkdir -p "$mise_only"
+  ln -s "$MISE_SHIM_DIR/mise" "$mise_only/mise"
+  export PATH="$mise_only:$(dirname "$(command -v git)"):/usr/bin:/bin"
+
+  run_prepush_at "$REPO"
   [ "$status" -eq 0 ]
+  [[ "$output" == *"LEFTHOOK_VIA_MISE run pre-push"* ]]
 }
 
 # lefthook.yml はあるがどちらの経路でも見つからない場合は .git/hooks へ落ちる。

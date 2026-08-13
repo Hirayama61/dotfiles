@@ -44,7 +44,9 @@ while IFS= read -r word || [ -n "$word" ]; do
     found=1
   fi
   echo "  パターン: $word" >&2
-  printf '%s\n' "$matches" | head -5 | sed 's/^/    /' >&2
+  # 一致行は staged 内容そのもの。ESC を通すと直後のブロック表示を偽装できる。
+  printf '%s\n' "$matches" | head -5 | tr -d '\000-\010\013\014\016-\037\177' |
+    sed 's/^/    /' >&2
   echo >&2
 done <"$words_file"
 
@@ -80,16 +82,21 @@ if mise which secretlint >/dev/null 2>&1; then
     done < <(git diff --cached --name-only -z --diff-filter=ACMR)
 
     if [ "${#secret_files[@]}" -gt 0 ]; then
-      # 設定は cwd から上位へ探索されるため、パスを固定しないとリポ直下の
-      # .secretlintrc でルールを空にされ、警告なくガードごと無効化される。
-      # $HOME 外(/tmp 等)のリポでは探索が届かず検査自体が成立しない。
+      # 設定と除外リストは cwd から上位へ探索される。どちらも固定しないと、リポ直下に
+      # 置かれた .secretlintrc(ルールを空にする)や .secretlintignore(全パスを除外する)
+      # で警告なくガードごと無効化される。$HOME 外(/tmp 等)のリポでは探索が届かず
+      # 検査自体が成立しない。
       # --no-gitignore が無いと git add -f した無視対象ファイルが走査から外れる。
+      # --no-glob が無いと引数は glob として解釈される(実体パス優先は文書化された
+      # 保証ではない)。--no-color / --no-terminalLink は出力から端末制御列を減らす。
       # -- が無いと `-n` のような名前が staged にあるだけでオプションと解釈され、
       # パースエラーでそのコミット全体が走査されないまま終わる。
       # set -e 下では代入の失敗がその場で hook を終わらせるため || で status を受ける。
       secretlint_status=0
       secretlint_out=$(NODE_PATH="$preset_dir/lib/node_modules" \
-        mise exec -- secretlint --secretlintrc "$secretlintrc" --no-gitignore \
+        mise exec -- secretlint \
+        --secretlintrc "$secretlintrc" --secretlintignore /dev/null \
+        --no-gitignore --no-glob --no-color --no-terminalLink \
         -- "${secret_files[@]}" 2>&1) || secretlint_status=$?
 
       if [ "$secretlint_status" -ne 0 ]; then

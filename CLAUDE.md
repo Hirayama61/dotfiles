@@ -84,12 +84,13 @@ chezmoi はソースから消えたファイルの target を自動削除しな�
 preset のルールで検出する。
 
 - 設定 `home/dot_secretlintrc.json`(→ `~/.secretlintrc.json`)は **dotfiles 管理**。
-  hook は `--secretlintrc` でこのパスを明示する。探索任せにすると、リポ直下に置かれた
-  `.secretlintrc` でルールを空にされて警告なくガードが無効化され、`$HOME` 外
+  hook は `--secretlintrc` でこのパスを、`--secretlintignore` で `/dev/null` を明示する。
+  探索任せにすると、リポ直下に置かれた `.secretlintrc`(ルールを空にする)や
+  `.secretlintignore`(全パスを除外する)で**警告なくガードごと無効化**され、`$HOME` 外
   (`/tmp` 等)のリポでは設定が見つからず検査自体が成立しない。
-- `--no-gitignore` と `--` は省略しない。前者が無いと `git add -f` した無視対象が
-  走査から外れ、後者が無いと `-n` のような名前が staged にあるだけでオプションと
-  解釈され、そのコミット全体が走査されないまま通る。
+- `--no-gitignore` `--no-glob` `--` は省略しない。順に、`git add -f` した無視対象が
+  走査から外れる / 引数が glob として解釈される / `-n` のような名前が staged にある
+  だけでオプションと解釈されコミット全体が走査されないまま通る、を防ぐ。
 - **起動後の非 0 は検出・実行失敗を問わず block する**。素通しにすると走査されなかった
   コミットが警告 1 行で通り、ガードが効いていないことに気付けない。
   警告のみで通すのは secretlint / preset / 設定ファイルが**不在**のときだけ。

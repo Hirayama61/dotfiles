@@ -64,6 +64,17 @@ setup() {
   [ "$status" -eq 1 ]
 }
 
+# 一致行は staged 内容そのもの。secretlint 側と対称に落とさないと、こちらだけ
+# ESC を通してブロック表示を偽装できる。
+@test "terminal control characters are stripped from the sensitive-word match output" {
+  write_words 'SECRET_TOKEN'
+  stage_file config.txt "$(printf 'SECRET_TOKEN=abc\033[2Kspoofed')"
+  run_precommit
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"spoofed"* ]]
+  [[ "$output" != *$'\033'* ]]
+}
+
 @test "E-C1: invalid regex pattern aborts fail-closed" {
   write_words 'foo(bar'
   stage_file note.txt "hello world"
@@ -143,7 +154,11 @@ setup() {
   [ "$status" -eq 0 ]
   run cat "$BATS_TEST_TMPDIR/secretlint-argv"
   [[ "$output" == *"--secretlintrc $HOME/.secretlintrc.json"* ]]
+  # 除外リストを固定しないと、リポ直下の .secretlintignore に ** を書くだけで
+  # ガードが無音で全無効化される(rc を固定した理由がそのまま残る)。
+  [[ "$output" == *"--secretlintignore /dev/null"* ]]
   [[ "$output" == *"--no-gitignore"* ]]
+  [[ "$output" == *"--no-glob"* ]]
   [[ "$output" == *"-- note.txt"* ]]
 }
 
