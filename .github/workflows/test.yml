@@ -1,16 +1,19 @@
 name: test
 
 on:
+  # push を main 限定にするのは、PR ブランチへの 1 push で push と pull_request が
+  # 両方発火し run が 2 本走るため。PR 中の検証は pull_request 側だけで足りる。
   push:
+    branches: [main]
   pull_request:
 
 # 最小権限: テストは読み取りのみで足りる(fork PR 時の被害面も縮小する)。
 permissions:
   contents: read
 
-# 同一ブランチの古い実行はキャンセル
+# 同一 PR / 同一ブランチの古い実行はキャンセル(二重発火の解消は上の push 側が担う)。
 concurrency:
-  group: test-${{ github.ref }}
+  group: test-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
