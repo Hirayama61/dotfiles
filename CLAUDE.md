@@ -75,9 +75,10 @@ chezmoi はソースから消えたファイルの target を自動削除しな�
 - 初期配置: `cp template/sensitive-words.txt.example ~/.config/git/sensitive-words.txt`
   して他人のハンドル/個人リポ名・トークン接頭辞などを追記。
 - 誤検知時のみ `git commit --no-verify`。リスト不在/staged 空なら素通し。
-- **追加行が 1 行も無いコミット(rename のみ・削除のみ等)は、機密語ガードの早期 return で
-  以降の secretlint / shfmt / shellcheck ごと skip される**。新しい内容が入らないので
-  秘密の新規混入は起きないが、この形のコミットにガードは掛からない。
+- **機密語ガードが見るのはテキストの追加行だけ**。バイナリ差分に追加行は現れないので、
+  この段はバイナリに埋めた秘密を検出しない。そこは後述の secretlint が受け持つ。
+  リスト不在・追加行ゼロでの脱出は**この段だけの skip** に閉じてあり、secretlint 以降は
+  必ず走る(トップレベルで `exit 0` すると、バイナリだけのコミットが全段素通しになる)。
 
 同じ pre-commit が secretlint による秘密情報スキャンも行う。こちらは自分で列挙する
 機密語と違い、`ghp_` / AWS キー / 秘密鍵ブロックなど**一般的なトークン形式**を
@@ -97,6 +98,10 @@ preset のルールで検出する。
   警告のみで通すのは secretlint / preset / 設定ファイルが**不在**のときだけ。
 - `xargs` は子の exit 1〜125 を一律 123 に潰すため使わない。staged ファイルは配列に
   読んで secretlint を直接起動する。
+- **渡すのは staged のパスなので、secretlint が読むのは index ではなく worktree の
+  現在の内容**。`git add` の後に同じファイルを書き換えると、コミットされる内容と
+  走査される内容が食い違う(秘密を stage してから worktree 側だけ消せば通る)。
+  塞ぐには index の blob を一時展開して渡す必要があり、未対応。
 
 ## ローカル hook のチェーン
 
