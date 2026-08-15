@@ -26,8 +26,19 @@ check_sensitive_words() {
   # 始まる場合(diff 上は `++++secret...`)まで誤除外し機密語を取りこぼす(CodeRabbit PR#79)。
   # 末尾 CR も除去する。被検査側に CR が残ると end-anchor パターン($)が CRLF ファイルで
   # 取りこぼす(E-C2 のリスト側 strip と対称。GNU grep で顕著)。
+  #
+  # diff の出力形式は config と gitattributes で変わる。既定任せにすると照合が黙って
+  # 空振りする(実測): color.ui=always なら追加行が ESC 列で始まって ^+ に当たらず、
+  # .gitattributes の `* -diff` なら "Binary files ... differ" になって追加行が消える。
+  # 後者はコミット内容なので、秘密を入れるコミット自身に同梱できる。
+  # prefix も diff.mnemonicPrefix / diff.noprefix で a/ b/ 以外になり、ヘッダ除外が
+  # 外れてパス名で誤ブロックする。すべて明示して固定する。
+  # grep 側の --text も要る。NUL を含む入力は "Binary file matches" の 1 行に潰され、
+  # git に --text を渡して取り出した追加行がそこで消える。
   local diff
-  diff=$(git diff --cached --diff-filter=ACMR 2>/dev/null | grep '^+' | grep -vE '^\+\+\+ [ab]/' | tr -d '\r' || true)
+  diff=$(git diff --cached --diff-filter=ACMR --no-color --text --no-ext-diff --no-textconv \
+    --src-prefix=a/ --dst-prefix=b/ 2>/dev/null |
+    grep -a '^+' | grep -av -E '^\+\+\+ [ab]/' | tr -d '\r' || true)
   [ -n "$diff" ] || return 0
 
   local found=0 word rc matches
@@ -95,6 +106,8 @@ if mise which secretlint >/dev/null 2>&1; then
       echo "ERROR: 一時ファイルを作成できませんでした。" >&2
       exit 1
     }
+    # コミット中の Ctrl-C で staged パス一覧が $TMPDIR に残らないようにする。
+    trap 'rm -f "$staged_list"' EXIT INT TERM
     list_status=0
     git diff --cached --name-only -z --diff-filter=ACMR >"$staged_list" || list_status=$?
     if [ "$list_status" -ne 0 ]; then
@@ -109,10 +122,19 @@ if mise which secretlint >/dev/null 2>&1; then
       secret_files+=("$secret_file")
     done <"$staged_list"
     rm -f "$staged_list"
+    trap - EXIT INT TERM
+
+    # secretlint は通常ファイルしか解決できず、解決先が 0 件だと rc=2 で終わる。
+    # submodule のポインタだけ / stage 後に worktree から消したパスだけのコミットは
+    # 実行失敗として誤ブロックされるため、渡す前に実在ファイルへ絞る。
+    scannable=()
+    for secret_file in ${secret_files[@]+"${secret_files[@]}"}; do
+      [ -f "$secret_file" ] && scannable+=("$secret_file")
+    done
 
     # 削除のみのコミットなど、走査対象が 1 件も無いのは正常。set -u 下の空配列展開は
     # bash 3.2 では未定義変数扱いになり abort するため、起動する前に分岐する。
-    if [ "${#secret_files[@]}" -gt 0 ]; then
+    if [ "${#scannable[@]}" -gt 0 ]; then
       # 設定と除外リストは cwd から上位へ探索される。どちらも固定しないと、リポ直下に
       # 置かれた .secretlintrc(ルールを空にする)や .secretlintignore(全パスを除外する)
       # で警告なくガードごと無効化される。$HOME 外(/tmp 等)のリポでは探索が届かず
@@ -128,7 +150,7 @@ if mise which secretlint >/dev/null 2>&1; then
         mise exec -- secretlint \
         --secretlintrc "$secretlintrc" --secretlintignore /dev/null \
         --no-gitignore --no-glob --no-color --no-terminalLink \
-        -- "${secret_files[@]}" 2>&1) || secretlint_status=$?
+        -- "${scannable[@]}" 2>&1) || secretlint_status=$?
 
       if [ "$secretlint_status" -ne 0 ]; then
         # 出力は staged ファイルの内容由来。残すのは TAB(\011)と LF(\012)だけ。

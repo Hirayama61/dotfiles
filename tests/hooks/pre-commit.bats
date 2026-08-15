@@ -209,27 +209,24 @@ setup() {
   [[ "$output" == *"new.txt"* ]]
 }
 
-# バイナリ差分に追加行は現れない。機密語ガードの脱出をこの段に閉じないと、
-# バイナリに埋めた秘密が secretlint まで届かず無検査で通る。
+# 機密語ガードの脱出をこの段に閉じないと、テキストの追加行を持たないコミットで
+# secretlint 以降が丸ごと skip される。
 @test "a binary-only change still reaches secretlint" {
   enable_secretlint 0
   fake_secretlint_reporting 0 ''
   write_words 'NOSUCHSECRET_XYZ'
   printf 'GIF89a\000SECRET\n' >"$REPO/blob.bin"
   git -C "$REPO" add blob.bin
-
-  # 追加行が本当にゼロであること。ここが崩れると機密語ガードが拾ってしまい、
-  # このテストは secretlint の到達を検証しなくなる。
-  run bash -c "git -C '$REPO' diff --cached --diff-filter=ACMR | grep -c '^+'"
-  [ "$output" = "0" ]
-
   run_precommit
   [ "$status" -eq 0 ]
   run cat "$BATS_TEST_TMPDIR/secretlint-argv"
   [[ "$output" == *"blob.bin"* ]]
 }
 
-@test "a binary-only change is blocked when secretlint detects a secret" {
+# 名前どおり「secretlint が非 0 を返せば止まる」ことだけを見る。fake は内容を読まない
+# ので、実 secretlint がバイナリ内の秘密を見つけられるかはここでは分からない
+# (実測では見つけられない。バイナリを受け持つのは下の機密語ガード側)。
+@test "a binary-only change is blocked when secretlint returns non-zero" {
   enable_secretlint 1
   write_words 'NOSUCHSECRET_XYZ'
   printf 'GIF89a\000SECRET\n' >"$REPO/blob.bin"
@@ -237,6 +234,74 @@ setup() {
   run_precommit
   [ "$status" -eq 1 ]
   [[ "$output" == *"exit 1"* ]]
+}
+
+# --text が無いと差分が "Binary files ... differ" になり、バイナリに埋めた機密語は
+# どの段も見ない(secretlint はバイナリの中身を走査しない)。
+@test "a secret inside a binary file is blocked by the sensitive-word guard" {
+  write_words 'SECRET_TOKEN'
+  printf 'GIF89a\000SECRET_TOKEN=abc123\000\n' >"$REPO/blob.bin"
+  git -C "$REPO" add blob.bin
+  run_precommit
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"機密語が staged 内容に含まれています"* ]]
+}
+
+# .gitattributes はコミット内容なので、秘密を入れるコミット自身に同梱できる。
+# 差分の出力形式を hook 側で固定しないと、これだけでガードが無音で外れる。
+@test "a gitattributes -diff override does not disable the guard" {
+  write_words 'SECRET_TOKEN'
+  printf '* -diff\n' >"$REPO/.gitattributes"
+  git -C "$REPO" add .gitattributes
+  commit_repo "seed attributes"
+  stage_file config.txt "SECRET_TOKEN=abc123"
+  run_precommit
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"機密語が staged 内容に含まれています"* ]]
+}
+
+# color.ui=always だと追加行が ESC 列で始まり ^+ に当たらなくなる。
+@test "color.ui=always does not disable the guard" {
+  write_words 'SECRET_TOKEN'
+  git -C "$REPO" config color.ui always
+  stage_file config.txt "SECRET_TOKEN=abc123"
+  run_precommit
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"機密語が staged 内容に含まれています"* ]]
+}
+
+# diff.noprefix だとヘッダが `+++ path` になり除外パターンから外れる。機密語を含む
+# パス名で無関係なファイルの追加が毎回ブロックされる(E-H2 の再発)。
+@test "diff.noprefix does not resurrect the header false positive" {
+  write_words 'SECRET_TOKEN'
+  git -C "$REPO" config diff.noprefix true
+  stage_file SECRET_TOKEN/note.txt "harmless content"
+  run_precommit
+  [ "$status" -eq 0 ]
+}
+
+# secretlint は通常ファイルしか解決できず、解決先ゼロだと rc=2 で終わる。実在
+# ファイルへ絞らないと、この形の正常なコミットが「実行失敗」で誤ブロックされる。
+@test "paths staged then removed from the worktree do not reach secretlint" {
+  enable_secretlint 1
+  fake_secretlint_reporting 1 'should not run'
+  write_words 'NOSUCHSECRET_XYZ'
+  stage_file gone.txt "hello"
+  rm -f "$REPO/gone.txt"
+  run_precommit
+  [ "$status" -eq 0 ]
+  [ ! -f "$BATS_TEST_TMPDIR/secretlint-argv" ]
+}
+
+# 一時ファイルを作れない状態で走査を諦めると、無検査のコミットが通る。
+@test "a temp file failure fails closed" {
+  enable_secretlint 0
+  write_words 'NOSUCHSECRET_XYZ'
+  stage_file note.txt "hello"
+  export TMPDIR=/nonexistent-dir-xyz
+  run_precommit
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"一時ファイルを作成できませんでした"* ]]
 }
 
 # 機密語リストはローカル専用で置いていないマシンもある。その 1 事情で
