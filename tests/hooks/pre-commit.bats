@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 # pre-commit の E2E。PR-D1 で採用した findings の再現入力を固定する:
 # E-C1(不正 ERE fail-closed)/ E-C2(CRLF)/ E-H1(shfmt 失敗ガード)/ E-H2(追加行限定)。
-# スコープは機密語ガードと shfmt ガード段。secretlint / shellcheck の block 経路は
-# hermetic shim では skip される(本 PR の対象外。実ツールでの検証は mise run lint が担う)。
+# スコープは機密語ガード / shfmt / secretlint の各段。shellcheck の block 経路は
+# hermetic shim では skip される(実ツールでの検証は mise run lint が担う)。
 
 load ../helpers/common
 
@@ -64,6 +64,17 @@ setup() {
   [ "$status" -eq 1 ]
 }
 
+# 一致行は staged 内容そのもの。secretlint 側と対称に落とさないと、こちらだけ
+# ESC を通してブロック表示を偽装できる。
+@test "terminal control characters are stripped from the sensitive-word match output" {
+  write_words 'SECRET_TOKEN'
+  stage_file config.txt "$(printf 'SECRET_TOKEN=abc\033[2Kspoofed')"
+  run_precommit
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"spoofed"* ]]
+  [[ "$output" != *$'\033'* ]]
+}
+
 @test "E-C1: invalid regex pattern aborts fail-closed" {
   write_words 'foo(bar'
   stage_file note.txt "hello world"
@@ -91,4 +102,243 @@ setup() {
   # 整形結果が staged に再反映されている(git add 経路)ことを観測する。
   run git -C "$REPO" show :ok.sh
   [[ "$output" == *"FORMATTED"* ]]
+}
+
+@test "secretlint detection (exit 1) blocks the commit" {
+  enable_secretlint 1
+  write_words 'NOSUCHSECRET_XYZ'
+  stage_file note.txt "hello"
+  run_precommit
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"exit 1"* ]]
+}
+
+# 走らなかったコミットを通すと、ガードが効いていないことに誰も気付けない。
+# 非 0 は検出と実行失敗を区別せず止める。
+@test "secretlint execution failure (exit 2) also blocks the commit" {
+  enable_secretlint 2
+  write_words 'NOSUCHSECRET_XYZ'
+  stage_file note.txt "hello"
+  run_precommit
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"exit 2"* ]]
+}
+
+@test "secretlint clean run (exit 0) passes without warning" {
+  enable_secretlint 0
+  write_words 'NOSUCHSECRET_XYZ'
+  stage_file note.txt "hello"
+  run_precommit
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"secretlint"* ]]
+}
+
+# 設定不在は「検査できない」であって「検出した」ではない。dotfiles 未適用の
+# マシンでコミットを止めないため、ここだけは警告して素通しする。
+@test "missing ~/.secretlintrc.json warns and skips the scan" {
+  enable_secretlint 1
+  rm -f "$HOME/.secretlintrc.json"
+  write_words 'NOSUCHSECRET_XYZ'
+  stage_file note.txt "hello"
+  run_precommit
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".secretlintrc.json がありません"* ]]
+}
+
+@test "secretlint receives the staged paths, the rc path and the guard options" {
+  enable_secretlint 0
+  fake_secretlint_reporting 0 ''
+  write_words 'NOSUCHSECRET_XYZ'
+  stage_file note.txt "hello"
+  run_precommit
+  [ "$status" -eq 0 ]
+  run cat "$BATS_TEST_TMPDIR/secretlint-argv"
+  [[ "$output" == *"--secretlintrc $HOME/.secretlintrc.json"* ]]
+  # 除外リストを固定しないと、リポ直下の .secretlintignore に ** を書くだけで
+  # ガードが無音で全無効化される(rc を固定した理由がそのまま残る)。
+  [[ "$output" == *"--secretlintignore /dev/null"* ]]
+  [[ "$output" == *"--no-gitignore"* ]]
+  [[ "$output" == *"--no-glob"* ]]
+  [[ "$output" == *"-- note.txt"* ]]
+}
+
+# 何が引っかかったか分からないと直しようがないので、検出内容を握り潰さない。
+@test "detection output is forwarded to the developer" {
+  enable_secretlint 1
+  fake_secretlint_reporting 1 'note.txt 1:7 error [GITHUB_TOKEN] found'
+  write_words 'NOSUCHSECRET_XYZ'
+  stage_file note.txt "hello"
+  run_precommit
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"[GITHUB_TOKEN] found"* ]]
+}
+
+# 出力は staged ファイルの内容由来。ESC を通すと直後のブロック表示を偽装できる。
+@test "terminal control characters are stripped from the forwarded output" {
+  enable_secretlint 1
+  fake_secretlint_reporting 1 'note.txt \033[2Kspoofed'
+  write_words 'NOSUCHSECRET_XYZ'
+  stage_file note.txt "hello"
+  run_precommit
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"spoofed"* ]]
+  [[ "$output" != *$'\033'* ]]
+}
+
+# git mv してから秘密を書き足す経路。機密語ガード(ACMR)と対象を揃える。
+@test "renamed files are included in the scan" {
+  enable_secretlint 0
+  fake_secretlint_reporting 0 ''
+  write_words 'NOSUCHSECRET_XYZ'
+  # 1 行ファイルを rename すると git は類似度を取れず A + D として記録するため、
+  # R を落としても ACM で拾えてしまい R の扱いを固定できない。R と判定される
+  # 程度の行数を持たせ、秘密を書き足す実際の経路と同じく内容変更も伴わせる。
+  printf 'line %s\n' 1 2 3 4 5 6 7 8 9 10 >"$REPO/old.txt"
+  git -C "$REPO" add old.txt
+  commit_repo "seed"
+  git -C "$REPO" mv old.txt new.txt
+  printf 'line %s\n' 1 2 3 4 5 6 7 8 9 10 11 >"$REPO/new.txt"
+  git -C "$REPO" add new.txt
+
+  run git -C "$REPO" diff --cached --name-status
+  [[ "$output" == R* ]]
+
+  run_precommit
+  [ "$status" -eq 0 ]
+  run cat "$BATS_TEST_TMPDIR/secretlint-argv"
+  [[ "$output" == *"new.txt"* ]]
+}
+
+# 機密語ガードの脱出をこの段に閉じないと、テキストの追加行を持たないコミットで
+# secretlint 以降が丸ごと skip される。
+@test "a binary-only change still reaches secretlint" {
+  enable_secretlint 0
+  fake_secretlint_reporting 0 ''
+  write_words 'NOSUCHSECRET_XYZ'
+  printf 'GIF89a\000SECRET\n' >"$REPO/blob.bin"
+  git -C "$REPO" add blob.bin
+  run_precommit
+  [ "$status" -eq 0 ]
+  run cat "$BATS_TEST_TMPDIR/secretlint-argv"
+  [[ "$output" == *"blob.bin"* ]]
+}
+
+# 名前どおり「secretlint が非 0 を返せば止まる」ことだけを見る。fake は内容を読まない
+# ので、実 secretlint がバイナリ内の秘密を見つけられるかはここでは分からない
+# (実測では見つけられない。バイナリを受け持つのは下の機密語ガード側)。
+@test "a binary-only change is blocked when secretlint returns non-zero" {
+  enable_secretlint 1
+  write_words 'NOSUCHSECRET_XYZ'
+  printf 'GIF89a\000SECRET\n' >"$REPO/blob.bin"
+  git -C "$REPO" add blob.bin
+  run_precommit
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"exit 1"* ]]
+}
+
+# --text が無いと差分が "Binary files ... differ" になり、バイナリに埋めた機密語は
+# どの段も見ない(secretlint はバイナリの中身を走査しない)。
+@test "a secret inside a binary file is blocked by the sensitive-word guard" {
+  write_words 'SECRET_TOKEN'
+  printf 'GIF89a\000SECRET_TOKEN=abc123\000\n' >"$REPO/blob.bin"
+  git -C "$REPO" add blob.bin
+  run_precommit
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"機密語が staged 内容に含まれています"* ]]
+}
+
+# .gitattributes はコミット内容なので、秘密を入れるコミット自身に同梱できる。
+# 差分の出力形式を hook 側で固定しないと、これだけでガードが無音で外れる。
+@test "a gitattributes -diff override does not disable the guard" {
+  write_words 'SECRET_TOKEN'
+  printf '* -diff\n' >"$REPO/.gitattributes"
+  git -C "$REPO" add .gitattributes
+  commit_repo "seed attributes"
+  stage_file config.txt "SECRET_TOKEN=abc123"
+  run_precommit
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"機密語が staged 内容に含まれています"* ]]
+}
+
+# color.ui=always だと追加行が ESC 列で始まり ^+ に当たらなくなる。
+@test "color.ui=always does not disable the guard" {
+  write_words 'SECRET_TOKEN'
+  git -C "$REPO" config color.ui always
+  stage_file config.txt "SECRET_TOKEN=abc123"
+  run_precommit
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"機密語が staged 内容に含まれています"* ]]
+}
+
+# diff.noprefix だとヘッダが `+++ path` になり除外パターンから外れる。機密語を含む
+# パス名で無関係なファイルの追加が毎回ブロックされる(E-H2 の再発)。
+@test "diff.noprefix does not resurrect the header false positive" {
+  write_words 'SECRET_TOKEN'
+  git -C "$REPO" config diff.noprefix true
+  stage_file SECRET_TOKEN/note.txt "harmless content"
+  run_precommit
+  [ "$status" -eq 0 ]
+}
+
+# secretlint は通常ファイルしか解決できず、解決先ゼロだと rc=2 で終わる。実在
+# ファイルへ絞らないと、この形の正常なコミットが「実行失敗」で誤ブロックされる。
+@test "paths staged then removed from the worktree do not reach secretlint" {
+  enable_secretlint 1
+  fake_secretlint_reporting 1 'should not run'
+  write_words 'NOSUCHSECRET_XYZ'
+  stage_file gone.txt "hello"
+  rm -f "$REPO/gone.txt"
+  run_precommit
+  [ "$status" -eq 0 ]
+  [ ! -f "$BATS_TEST_TMPDIR/secretlint-argv" ]
+}
+
+# 一時ファイルを作れない状態で走査を諦めると、無検査のコミットが通る。
+@test "a temp file failure fails closed" {
+  enable_secretlint 0
+  write_words 'NOSUCHSECRET_XYZ'
+  stage_file note.txt "hello"
+  export TMPDIR=/nonexistent-dir-xyz
+  run_precommit
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"一時ファイルを作成できませんでした"* ]]
+}
+
+# 機密語リストはローカル専用で置いていないマシンもある。その 1 事情で
+# secretlint まで止まると、そのマシンのコミットが全面的に無検査になる。
+@test "secretlint runs even without a sensitive-words list" {
+  enable_secretlint 0
+  fake_secretlint_reporting 0 ''
+  rm -f "$HOME/.config/git/sensitive-words.txt"
+  stage_file note.txt "hello"
+  run_precommit
+  [ "$status" -eq 0 ]
+  run cat "$BATS_TEST_TMPDIR/secretlint-argv"
+  [[ "$output" == *"note.txt"* ]]
+}
+
+# 走査対象ゼロは正常。set -u 下で空配列を展開すると bash 3.2 が abort するため、
+# 起動を避ける分岐が要る。
+@test "a deletion-only commit passes without invoking secretlint" {
+  stage_file note.txt "hello"
+  commit_repo "seed"
+  enable_secretlint 1
+  fake_secretlint_reporting 1 'should not run'
+  write_words 'NOSUCHSECRET_XYZ'
+  git -C "$REPO" rm -q note.txt
+  run_precommit
+  [ "$status" -eq 0 ]
+  [ ! -f "$BATS_TEST_TMPDIR/secretlint-argv" ]
+}
+
+# CR は行頭復帰。通すと直後に出すブロック理由を上書きして隠せる。
+@test "carriage returns are stripped from the forwarded output" {
+  enable_secretlint 1
+  fake_secretlint_reporting 1 'note.txt found\rhidden'
+  write_words 'NOSUCHSECRET_XYZ'
+  stage_file note.txt "hello"
+  run_precommit
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"hidden"* ]]
+  [[ "$output" != *$'\r'* ]]
 }

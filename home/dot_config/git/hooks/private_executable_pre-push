@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# pre-push hook: ローカル hook へのチェーン実行だけを行う
+#
+# core.hooksPath をグローバル設定していると、git は各リポの husky/lefthook/
+# .git/hooks を完全にバイパスする。pre-commit / commit-msg と違いこの hook 名には
+# グローバル側の検査が無いため、委譲だけを行ってリポ固有の pre-push を生かす。
+#
+# 引数は <remote 名> <remote URL>、stdin には push 対象の ref が流れる。exec で
+# プロセス置換するので、どちらもそのまま委譲先へ引き継がれる。
+
+set -eu
+
+# husky v9+
+if [ -x ".husky/pre-push" ]; then
+  exec .husky/pre-push "$@"
+fi
+
+# lefthook(PATH 直 → mise の順で検出。設定は lefthook.yml / lefthook.yaml を対象)
+# ref は stdin から読むため、remote 引数は渡さない。
+if [ -f "lefthook.yml" ] || [ -f "lefthook.yaml" ]; then
+  if command -v lefthook >/dev/null 2>&1; then
+    exec lefthook run pre-push
+  elif mise which lefthook >/dev/null 2>&1; then
+    exec mise exec -- lefthook run pre-push
+  fi
+fi
+
+# 標準ローカルフック(.git/hooks/pre-push)
+# linked worktree では --git-dir が .git/worktrees/<名前> を指し hooks/ を持たない。
+# git 自身は共有側で hook を解決するので、判定も --git-common-dir に合わせる。
+git_dir=$(git rev-parse --git-common-dir 2>/dev/null || true)
+if [ -n "$git_dir" ] && [ -x "$git_dir/hooks/pre-push" ]; then
+  exec "$git_dir/hooks/pre-push" "$@"
+fi
+
+# 委譲先が無ければ push を止めない。
+exit 0

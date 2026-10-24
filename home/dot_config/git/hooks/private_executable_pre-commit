@@ -5,53 +5,80 @@
 # staged diff に現れたらコミットをブロックする。リスト本体は隠したい文字列の
 # 一覧そのものなので git 管理外のローカルファイルに置く(リポには .example のみ)。
 #
-# 誤検知時は git commit --no-verify で回避。リスト不在/staged 空なら素通し。
+# 誤検知時は git commit --no-verify で回避。リスト不在・追加行ゼロのときに
+# 素通しになるのはこの段だけで、後続の secretlint 以降は走る。
 
 set -eu
 
-words_file="$HOME/.config/git/sensitive-words.txt"
-[ -f "$words_file" ] || exit 0
+# リスト不在・追加行ゼロでの脱出を、この段だけの skip に閉じるための関数化。
+# トップレベルで exit 0 すると、テキストの追加行を持たないコミット(バイナリ追加・
+# 削除のみ・rename のみ)で後続の secretlint まで skip され、バイナリに埋めた秘密が
+# 無検査で通る。
+# ブロックは関数の中で exit する。`check_sensitive_words || exit 1` の形にすると
+# 呼び出しが条件文脈になり、関数本体を実行する間だけ set -e が無効化される。
+check_sensitive_words() {
+  local words_file="$HOME/.config/git/sensitive-words.txt"
+  [ -f "$words_file" ] || return 0
 
-# 追加行(先頭 +)だけを照合対象にする。削除行・コンテキスト行・diff ヘッダ(+++/---/@@)
-# まで含めると、機密語を「削除する」コミットや差分ヘッダのパス名で誤ブロックする(E-H2)。
-# ヘッダ除外は `+++ a/` `+++ b/` 形に限定する。単純な `^+++` だと、追加行の内容が `++` で
-# 始まる場合(diff 上は `++++secret...`)まで誤除外し機密語を取りこぼす(CodeRabbit PR#79)。
-# 末尾 CR も除去する。被検査側に CR が残ると end-anchor パターン($)が CRLF ファイルで
-# 取りこぼす(E-C2 のリスト側 strip と対称。GNU grep で顕著)。
-diff=$(git diff --cached --diff-filter=ACMR 2>/dev/null | grep '^+' | grep -vE '^\+\+\+ [ab]/' | tr -d '\r' || true)
-[ -n "$diff" ] || exit 0
+  # 追加行(先頭 +)だけを照合対象にする。削除行・コンテキスト行・diff ヘッダ(+++/---/@@)
+  # まで含めると、機密語を「削除する」コミットや差分ヘッダのパス名で誤ブロックする(E-H2)。
+  # ヘッダ除外は `+++ a/` `+++ b/` 形に限定する。単純な `^+++` だと、追加行の内容が `++` で
+  # 始まる場合(diff 上は `++++secret...`)まで誤除外し機密語を取りこぼす(CodeRabbit PR#79)。
+  # 末尾 CR も除去する。被検査側に CR が残ると end-anchor パターン($)が CRLF ファイルで
+  # 取りこぼす(E-C2 のリスト側 strip と対称。GNU grep で顕著)。
+  #
+  # diff の出力形式は config と gitattributes で変わる。既定任せにすると照合が黙って
+  # 空振りする(実測): color.ui=always なら追加行が ESC 列で始まって ^+ に当たらず、
+  # .gitattributes の `* -diff` なら "Binary files ... differ" になって追加行が消える。
+  # 後者はコミット内容なので、秘密を入れるコミット自身に同梱できる。
+  # prefix も diff.mnemonicPrefix / diff.noprefix で a/ b/ 以外になり、ヘッダ除外が
+  # 外れてパス名で誤ブロックする。すべて明示して固定する。
+  # grep 側の --text も要る。NUL を含む入力は "Binary file matches" の 1 行に潰され、
+  # git に --text を渡して取り出した追加行がそこで消える。
+  local diff
+  diff=$(git diff --cached --diff-filter=ACMR --no-color --text --no-ext-diff --no-textconv \
+    --src-prefix=a/ --dst-prefix=b/ 2>/dev/null |
+    grep -a '^+' | grep -av -E '^\+\+\+ [ab]/' | tr -d '\r' || true)
+  [ -n "$diff" ] || return 0
 
-found=0
-while IFS= read -r word || [ -n "$word" ]; do
-  # CRLF のリストだと末尾 CR が ERE に混ざり全パターンが無効化される(E-C2)。
-  word=${word%$'\r'}
-  [[ -z "$word" || "$word" == \#* ]] && continue
+  local found=0 word rc matches
+  while IFS= read -r word || [ -n "$word" ]; do
+    # CRLF のリストだと末尾 CR が ERE に混ざり全パターンが無効化される(E-C2)。
+    word=${word%$'\r'}
+    [[ -z "$word" || "$word" == \#* ]] && continue
 
-  # 不正な ERE を `|| true` で握ると grep のエラー(rc>=2)をマッチ無しと取り違え、
-  # typo パターンが沈黙スキップされる(E-C1)。rc>=2 はエラーとして fail-closed する。
-  rc=0
-  matches=$(printf '%s\n' "$diff" | grep -inE "$word") || rc=$?
-  if [ "$rc" -ge 2 ]; then
-    echo "ERROR: 機密語パターンが不正な正規表現です(grep rc=$rc): $word" >&2
-    echo "~/.config/git/sensitive-words.txt の該当パターンを修正してください。" >&2
+    # 不正な ERE を `|| true` で握ると grep のエラー(rc>=2)をマッチ無しと取り違え、
+    # typo パターンが沈黙スキップされる(E-C1)。rc>=2 はエラーとして fail-closed する。
+    rc=0
+    matches=$(printf '%s\n' "$diff" | grep -inE "$word") || rc=$?
+    if [ "$rc" -ge 2 ]; then
+      echo "ERROR: 機密語パターンが不正な正規表現です(grep rc=$rc): $word" >&2
+      echo "~/.config/git/sensitive-words.txt の該当パターンを修正してください。" >&2
+      exit 1
+    fi
+    [ -n "$matches" ] || continue
+
+    if [ "$found" -eq 0 ]; then
+      echo "ERROR: 機密語が staged 内容に含まれています。コミットを中止しました。" >&2
+      echo >&2
+      found=1
+    fi
+    echo "  パターン: $word" >&2
+    # 一致行は staged 内容そのもの。残すのは TAB(\011)と LF(\012)だけで、表示を
+    # 操作してブロック理由を隠せる制御文字(ESC / CR)は落とす。
+    printf '%s\n' "$matches" | head -5 | tr -d '\000-\010\013-\037\177' |
+      sed 's/^/    /' >&2
+    echo >&2
+  done <"$words_file"
+
+  if [ "$found" -ne 0 ]; then
+    echo "誤検知の場合のみ git commit --no-verify で回避してください。" >&2
     exit 1
   fi
-  [ -n "$matches" ] || continue
+  return 0
+}
 
-  if [ "$found" -eq 0 ]; then
-    echo "ERROR: 機密語が staged 内容に含まれています。コミットを中止しました。" >&2
-    echo >&2
-    found=1
-  fi
-  echo "  パターン: $word" >&2
-  printf '%s\n' "$matches" | head -5 | sed 's/^/    /' >&2
-  echo >&2
-done <"$words_file"
-
-if [ "$found" -ne 0 ]; then
-  echo "誤検知の場合のみ git commit --no-verify で回避してください。" >&2
-  exit 1
-fi
+check_sensitive_words
 
 # Secretlint guard
 #
@@ -59,19 +86,77 @@ fi
 # mise の npm 隔離インストールでは secretlint 本体と preset-recommend が別の
 # install ディレクトリに入り secretlint のリゾルバが preset を解決できない。
 # preset の node_modules を NODE_PATH で明示してこれを回避する。
-# secretlint / preset 不在時は警告のみで素通し(他ブロックの方針に合わせる)。
-# NUL 区切りはシェル変数に保持できないため -z 出力はパイプ直結で xargs に渡す。
+# secretlint / preset / 設定ファイルの不在時は警告のみで素通し(他ブロックの方針に
+# 合わせる)。起動できた後の非 0 は検出・実行失敗を問わず block する — 素通しにすると
+# 走査されなかったコミットが警告 1 行で通り、ガードの不在に気付けない。
 
 if mise which secretlint >/dev/null 2>&1; then
   preset_dir=$(mise where "npm:@secretlint/secretlint-rule-preset-recommend" 2>/dev/null || true)
+  secretlintrc="$HOME/.secretlintrc.json"
   if [ -z "$preset_dir" ]; then
     echo "警告: secretlint preset が見つかりません。mise install を実行してください。" >&2
+  elif [ ! -f "$secretlintrc" ]; then
+    echo "警告: $secretlintrc がありません。mise run apply を実行してください。" >&2
   else
-    staged_count=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | wc -l | tr -d ' ')
-    if [ "$staged_count" -gt 0 ]; then
-      if ! git diff --cached --name-only -z --diff-filter=ACM |
-        NODE_PATH="$preset_dir/lib/node_modules" xargs -0 mise exec -- secretlint 2>/dev/null; then
-        echo "ERROR: secretlint が秘密情報を検出しました。コミットを中止しました。" >&2
+    # 走査対象は staged の追加/変更/rename 後のパス。R を落とすと git mv してから
+    # 秘密を書き足す経路が漏れる(上の機密語ガードは ACMR で揃っている)。
+    # プロセス置換は git の失敗を握り潰し、空一覧を「走査対象なし」と読ませてしまう。
+    # 一時ファイルに落として終了ステータスを見る。
+    staged_list=$(mktemp "${TMPDIR:-/tmp}/pre-commit-staged.XXXXXX") || {
+      echo "ERROR: 一時ファイルを作成できませんでした。" >&2
+      exit 1
+    }
+    # コミット中の Ctrl-C で staged パス一覧が $TMPDIR に残らないようにする。
+    trap 'rm -f "$staged_list"' EXIT INT TERM
+    list_status=0
+    git diff --cached --name-only -z --diff-filter=ACMR >"$staged_list" || list_status=$?
+    if [ "$list_status" -ne 0 ]; then
+      rm -f "$staged_list"
+      echo "ERROR: staged ファイル一覧を取得できませんでした(git exit $list_status)。" >&2
+      exit 1
+    fi
+
+    # NUL 区切りの読み出しは bash 3.2(macOS 同梱)に mapfile が無いためループで行う。
+    secret_files=()
+    while IFS= read -r -d '' secret_file; do
+      secret_files+=("$secret_file")
+    done <"$staged_list"
+    rm -f "$staged_list"
+    trap - EXIT INT TERM
+
+    # secretlint は通常ファイルしか解決できず、解決先が 0 件だと rc=2 で終わる。
+    # submodule のポインタだけ / stage 後に worktree から消したパスだけのコミットは
+    # 実行失敗として誤ブロックされるため、渡す前に実在ファイルへ絞る。
+    scannable=()
+    for secret_file in ${secret_files[@]+"${secret_files[@]}"}; do
+      [ -f "$secret_file" ] && scannable+=("$secret_file")
+    done
+
+    # 削除のみのコミットなど、走査対象が 1 件も無いのは正常。set -u 下の空配列展開は
+    # bash 3.2 では未定義変数扱いになり abort するため、起動する前に分岐する。
+    if [ "${#scannable[@]}" -gt 0 ]; then
+      # 設定と除外リストは cwd から上位へ探索される。どちらも固定しないと、リポ直下に
+      # 置かれた .secretlintrc(ルールを空にする)や .secretlintignore(全パスを除外する)
+      # で警告なくガードごと無効化される。$HOME 外(/tmp 等)のリポでは探索が届かず
+      # 検査自体が成立しない。
+      # --no-gitignore が無いと git add -f した無視対象ファイルが走査から外れる。
+      # --no-glob が無いと引数は glob として解釈される(実体パス優先は文書化された
+      # 保証ではない)。--no-color / --no-terminalLink は出力から端末制御列を減らす。
+      # -- が無いと `-n` のような名前が staged にあるだけでオプションと解釈され、
+      # パースエラーで走査されないまま終わる。
+      # set -e 下では代入の失敗がその場で hook を終わらせるため || で status を受ける。
+      secretlint_status=0
+      secretlint_out=$(NODE_PATH="$preset_dir/lib/node_modules" \
+        mise exec -- secretlint \
+        --secretlintrc "$secretlintrc" --secretlintignore /dev/null \
+        --no-gitignore --no-glob --no-color --no-terminalLink \
+        -- "${scannable[@]}" 2>&1) || secretlint_status=$?
+
+      if [ "$secretlint_status" -ne 0 ]; then
+        # 出力は staged ファイルの内容由来。残すのは TAB(\011)と LF(\012)だけ。
+        # ESC は直後のブロック表示を偽装でき、CR は行頭復帰で上書きできる。
+        printf '%s\n' "$secretlint_out" | tr -d '\000-\010\013-\037\177' >&2
+        echo "ERROR: secretlint が秘密情報を検出したか、実行に失敗しました(exit $secretlint_status)。" >&2
         echo "誤検知の場合のみ git commit --no-verify で回避してください。" >&2
         exit 1
       fi
@@ -149,7 +234,9 @@ if [ -f "lefthook.yml" ] || [ -f "lefthook.yaml" ]; then
 fi
 
 # 標準ローカルフック(.git/hooks/pre-commit)
-git_dir=$(git rev-parse --git-dir 2>/dev/null || true)
+# linked worktree では --git-dir が .git/worktrees/<名前> を指し hooks/ を持たない。
+# git 自身は共有側で hook を解決するので、判定も --git-common-dir に合わせる。
+git_dir=$(git rev-parse --git-common-dir 2>/dev/null || true)
 if [ -n "$git_dir" ] && [ -x "$git_dir/hooks/pre-commit" ]; then
   exec "$git_dir/hooks/pre-commit" "$@"
 fi

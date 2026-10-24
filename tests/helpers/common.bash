@@ -16,13 +16,16 @@ REPO_ROOT="$(cd "$HELPER_DIR/../.." && pwd)"
 HOOKS_SRC="$REPO_ROOT/home/dot_config/git/hooks"
 PRECOMMIT_HOOK="$HOOKS_SRC/private_executable_pre-commit"
 COMMITMSG_HOOK="$HOOKS_SRC/private_executable_commit-msg"
+PREPUSH_HOOK="$HOOKS_SRC/private_executable_pre-push"
 
 setup_repo() {
   export TEST_HOME="$BATS_TEST_TMPDIR/home"
   mkdir -p "$TEST_HOME/.config/git"
   export HOME="$TEST_HOME"
 
-  # mise shim: which=shim dir に fake があれば成功 / exec=fake を実行 / where=不在。
+  # mise shim: which=shim dir に fake があれば成功 / exec=fake を実行 /
+  # where=MISE_WHERE_DIR を返す(未設定なら不在扱い)。secretlint 段は preset の
+  # where 解決に成功しないと入れないため、その段を検証するテストだけ設定する。
   export MISE_SHIM_DIR="$BATS_TEST_TMPDIR/shim"
   mkdir -p "$MISE_SHIM_DIR"
   cat >"$MISE_SHIM_DIR/mise" <<'SH'
@@ -31,7 +34,7 @@ cmd="${1:-}"; shift 2>/dev/null || true
 case "$cmd" in
   which) [ -x "$MISE_SHIM_DIR/${1:-}" ] ;;
   exec) [ "${1:-}" = "--" ] && shift; t="${1:-}"; shift 2>/dev/null || true; exec "$MISE_SHIM_DIR/$t" "$@" ;;
-  where) exit 1 ;;
+  where) if [ -n "${MISE_WHERE_DIR:-}" ]; then printf '%s\n' "$MISE_WHERE_DIR"; else exit 1; fi ;;
   *) exit 0 ;;
 esac
 SH
@@ -55,6 +58,29 @@ fake_tool() {
 exit ${2:-0}
 SH
   chmod +x "$MISE_SHIM_DIR/$1"
+}
+
+# secretlint 段を有効化する。この段へ入るには preset dir の where 解決と
+# ~/.secretlintrc.json の実在が要る。preset dir の中身は NODE_PATH に渡されるだけ、
+# rc は --secretlintrc の引数として渡されるだけで、どちらも fake は読まない。
+enable_secretlint() {
+  export MISE_WHERE_DIR="$BATS_TEST_TMPDIR/preset"
+  mkdir -p "$MISE_WHERE_DIR/lib/node_modules"
+  printf '{"rules":[]}\n' >"$HOME/.secretlintrc.json"
+  fake_tool secretlint "${1:-0}"
+}
+
+# 受け取った argv を記録し、指定のメッセージを出して終わる fake secretlint。
+# argv の検証と、hook が出力をどう転送するかの観測に使う。
+# メッセージは printf %b で展開するので \033 等のエスケープを書ける。
+fake_secretlint_reporting() {
+  cat >"$MISE_SHIM_DIR/secretlint" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >"$BATS_TEST_TMPDIR/secretlint-argv"
+printf '%b\n' '$2'
+exit $1
+SH
+  chmod +x "$MISE_SHIM_DIR/secretlint"
 }
 
 # 整形対象ファイル(最終引数)を実際に書き換えて成功する fake shfmt。
@@ -92,6 +118,21 @@ run_precommit() {
   output="$(cd "$REPO" && bash "$PRECOMMIT_HOOK" 2>&1)"
   status=$?
   set -e
+}
+
+# run_prepush_at <実行ディレクトリ> [stdin に流す ref 行]。
+# git が渡すのと同じ remote 引数で pre-push を起動する。
+run_prepush_at() {
+  set +e
+  output="$(cd "$1" && printf '%s' "${2:-}" |
+    bash "$PREPUSH_HOOK" origin https://example.invalid/repo.git 2>&1)"
+  status=$?
+  set -e
+}
+
+# run_prepush [stdin に流す ref 行]。$REPO で起動する。
+run_prepush() {
+  run_prepush_at "$REPO" "${1:-}"
 }
 
 # run_commitmsg <メッセージ>。一時メッセージファイルを作って commit-msg を起動。

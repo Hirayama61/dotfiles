@@ -75,6 +75,65 @@ chezmoi はソースから消えたファイルの target を自動削除しな�
 - 初期配置: `cp template/sensitive-words.txt.example ~/.config/git/sensitive-words.txt`
   して他人のハンドル/個人リポ名・トークン接頭辞などを追記。
 - 誤検知時のみ `git commit --no-verify`。リスト不在/staged 空なら素通し。
+- **バイナリの中身を見るのはこの段だけ**。secretlint はバイナリを走査しない(実測: 同じ
+  認証情報をテキストに置くと検出、NUL 入りファイルに置くと無検出)。`git diff` と `grep` の
+  両方に `--text` を渡して照合対象に含めている。片方でも欠けると、差分が
+  `Binary files ... differ` になるか `Binary file matches` の 1 行に潰れて取りこぼす。
+  50MB のバイナリでも 1 秒未満なので、常時付けてよい。
+- **差分の出力形式は明示して固定する**(`--no-color` / `--no-ext-diff` / `--no-textconv` /
+  `--src-prefix` / `--dst-prefix`)。既定任せだと `color.ui=always` で追加行が ESC 列から
+  始まって `^+` に当たらず、`.gitattributes` の `* -diff` で追加行そのものが消える。
+  後者は**コミット内容なので、秘密を入れるコミット自身に同梱できる**。prefix も
+  `diff.mnemonicPrefix` / `diff.noprefix` で変わり、ヘッダ除外が外れてパス名で誤ブロックする。
+- リスト不在・追加行ゼロでの脱出は**この段だけの skip** に閉じてある(トップレベルで
+  `exit 0` すると、バイナリだけのコミットが全段素通しになる)。**この結果、リストを
+  置いていないマシンでも secretlint 以降が走る** — shfmt の自動整形と再 stage、shellcheck、
+  リポ側 hook への委譲がそこで初めて動き出す。
+
+同じ pre-commit が secretlint による秘密情報スキャンも行う。こちらは自分で列挙する
+機密語と違い、`ghp_` / AWS キー / 秘密鍵ブロックなど**一般的なトークン形式**を
+preset のルールで検出する。
+
+- 設定 `home/dot_secretlintrc.json`(→ `~/.secretlintrc.json`)は **dotfiles 管理**。
+  hook は `--secretlintrc` でこのパスを、`--secretlintignore` で `/dev/null` を明示する。
+  探索任せにすると、リポ直下に置かれた `.secretlintrc`(ルールを空にする)や
+  `.secretlintignore`(全パスを除外する)で**警告なくガードごと無効化**され、`$HOME` 外
+  (`/tmp` 等)のリポでは設定が見つからず検査自体が成立しない。
+- `--no-gitignore` `--no-glob` `--` は省略しない。順に、`git add -f` した無視対象が
+  走査から外れる / 引数が glob として解釈される / `-n` のような名前が staged にある
+  だけでオプションと解釈され、パースエラーでそのコミットが走査されないまま実行失敗
+  として止まる、を防ぐ。
+- **起動後の非 0 は検出・実行失敗を問わず block する**。素通しにすると走査されなかった
+  コミットが警告 1 行で通り、ガードが効いていないことに気付けない。
+  警告のみで通すのは secretlint / preset / 設定ファイルが**不在**のときだけ。
+- `xargs` は子の exit 1〜125 を一律 123 に潰すため使わない。staged ファイルは配列に
+  読んで secretlint を直接起動する。
+- **渡すのは staged のパスなので、secretlint が読むのは index ではなく worktree の
+  現在の内容**。`git add` の後に同じファイルを書き換えると、コミットされる内容と
+  走査される内容が食い違う(秘密を stage してから worktree 側だけ消せば通る)。
+  塞ぐには index の blob を一時展開して渡す必要があり、未対応。
+- 渡す前に**実在ファイルへ絞る**。secretlint は通常ファイルしか解決できず、解決先が
+  0 件だと rc=2 で終わる。submodule のポインタだけ / stage 後に worktree から消した
+  パスだけのコミットが、絞らないと「実行失敗」として誤ブロックされる。
+- **バイナリの中身は走査しない**(実測)。そこは上の機密語ガードが `--text` で受け持つ。
+
+## ローカル hook のチェーン
+
+`core.hooksPath` をグローバル設定しているため、git は各リポの husky / lefthook /
+`.git/hooks` を**完全にバイパスする**。グローバル hook 側から明示委譲して両立させている。
+
+- 委譲順は husky → lefthook → `.git/hooks`。見つかった時点で exec するため後続は走らない。
+- 実体があるのは `pre-commit` / `commit-msg` / `pre-push` の3本。**これ以外の hook 名
+  (post-commit / prepare-commit-msg 等)はリポ側 hook が無視される**。必要になったら
+  `private_executable_pre-push` に倣って委譲だけを行う hook を足す。
+- `pre-push` はグローバル側の検査を持たず委譲だけを行う。stdin(push 対象の ref)は
+  全経路で、引数(remote 名 / URL)は husky と `.git/hooks` の経路で引き継がれる
+  (lefthook は `lefthook run pre-push` で起動するため引数は渡さない)。
+- 委譲先の判定には `git rev-parse --git-common-dir` を使う。linked worktree では
+  `--git-dir` が `.git/worktrees/<名前>` を指し、そこに `hooks/` が無いため
+  **worktree 内での委譲が黙って無効になる**。
+- 逆にリポ側で `core.hooksPath` を設定すると**グローバル hook が丸ごと止まる**
+  (husky / lefthook の install がこれを行う)。機密語ガードごと無効になる点に注意。
 
 ## macOS システム設定 (defaults / pmset / nvram)
 
